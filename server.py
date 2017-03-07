@@ -6,6 +6,9 @@ import Queue
 import re
 import sys
 
+from hashlib import sha1
+from binascii import hexlify
+
 
 class Server(object):
     def __init__(self, HOST, PORT, Prev_PORT, Next_PORT):
@@ -46,6 +49,14 @@ class Server(object):
             self.Next = Next_PORT
 
         self.message_queues = {}  # servers' reply messages
+        self.hasher = sha1()
+
+
+    def _hash(self, key):
+        """Hashes the key and returns its hash"""
+        while True:
+            self.hasher.update(key)
+            yield hexlify(self.hasher.digest())
 
     def accept_connection(self):
         while True:
