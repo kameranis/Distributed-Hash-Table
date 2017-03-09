@@ -1,22 +1,32 @@
 #!/usr/bin/env python
 
 import socket
-
+import logging
+logging.basicConfig(filename='debug.log',level=logging.DEBUG)
 
 class Client(object):
     def __init__(self, PORT):
-        self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.client_socket.connect(('localhost', PORT))
+        self.PORT=PORT
+        self.client_socket=socket.socket()
+        if PORT!=-1:
+            self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.client_socket.connect(('localhost', PORT))
 
     def make_query(self, question):
-        # data = raw_input ( "SEND :" )
         self.client_socket.send(question)
-        answer = self.client_socket.recv(1024)
-        print answer
+        return self.client_socket.recv(1024)
 
+    def send_info(self,info):
+        self.client_socket.send(info)
 
-x = Client(8881)
-y = raw_input("SEND: ")
-while y != 'quit':
-    x.make_query(y)
-    y = raw_input("SEND: ")
+    def close_connection(self):
+        self.client_socket.send('quit')
+        logging.debug('Ask permission to quit '+str(self.PORT))
+        self.client_socket.recv(1024)
+        logging.debug('Quit gracefully')
+        self.client_socket.close()
+        
+
+    def get_socket(self):
+        return self.client_socket
+
