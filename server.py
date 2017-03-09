@@ -3,11 +3,13 @@
 import socket
 import select
 import Queue
-import re
 import sys
-import request
-from client import Client
 import logging
+
+from client import Client
+from hashlib import sha1
+from binascii import hexlify
+
 logging.basicConfig(filename='debug.log',level=logging.DEBUG)
 
 class Server(object):
@@ -30,16 +32,16 @@ class Server(object):
         self.PORT = self.s.getsockname()[1]
         self.s.listen(6)
         logging.debug(str(self.PORT)+' server created')
-        self.connection_list = [self.s]  
-        self.write_to_client = []  
+        self.connection_list = [self.s]
+        self.write_to_client = []
+        self._hasher = sha1()
         self.message_queues = {}  # servers' reply messages
-        
+
     def _hash(self, key):
         """Hashes the key and returns its hash"""
-        while True:
-            self.hasher.update(key)
-            yield hexlify(self.hasher.digest())
-                                                        
+        self._hasher.update(key)
+        return hexlify(self.hasher.digest())
+
     def DHT_join(self):
         x=self.master.make_query('join:'+str(self.HOST)).split()
         logging.debug('I am '+str(self.HOST)+ ' PREV: '+str(x[1])+' NEXT: '+str(x[3]))
@@ -47,17 +49,17 @@ class Server(object):
         self.N_HOST=int(x[3])
         x[0]=int(x[0])
         x[1]=int(x[2])
-        
+
         self.client_socket_prev = Client(x[0])
         self.client_socket_prev.make_query('next:' + str(self.PORT)+ ':'+str(self.HOST))
         self.Prev = x[0]
-        
+
         self.client_socket_next = Client(x[1])
         self.client_socket_next.make_query('prev:' + str(self.PORT)+':'+str(self.HOST))
         self.Next = x[1]
 
         self.master.close_connection()
-   
+
     def accept_connection(self):
         while True:
             read_sockets, write_sockets, error_sockets = select.select(self.connection_list, self.write_to_client,
@@ -107,7 +109,7 @@ class Server(object):
                                     else:
                                         self.message_queues[sock].put(self.client_socket_next.make_query(data))
                                         logging.debug('Branch 6')
-                                
+
                         elif data[:5]=='print':
                             if self.N_HOST!=1:
                                 self.message_queues[sock].put(str(self.HOST)+'->'+self.client_socket_next.make_query('print'))
@@ -129,11 +131,11 @@ class Server(object):
                         if sock in self.write_to_client:
                             self.write_to_client.remove(sock)
                             logging.debug(str(self.PORT) + ' connection with client shutted')
-                            
+
                         self.connection_list.remove(sock)
                         sock.close()
                         del self.message_queues[sock]
-                        
+
 
             for sock in error_sockets:
                 print >> sys.stderr, 'handling exceptional condition for', sock.getpeername()
