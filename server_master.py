@@ -7,19 +7,22 @@ import re
 import sys
 import request
 from hashlib import sha1
+from binascii import hexlify
 from client import Client
 import logging
-logging.basicConfig(filename='debug.log',level=logging.DEBUG)
+logging.basicConfig(filename='debug.log',level=logging.ERROR)
 
 class Server_master(object):
     def __init__(self, HOST, PORT):
-        
+        self._hasher=sha1(HOST)
+        self._network_size = 1
         self.HOST = HOST
-        self.N_HOST = HOST
-        self.P_HOST = HOST
+        self.myhash = self._hasher.hexdigest()
+        self.N_hash = self.myhash
+        self.P_hash = self.myhash
         self.PORT = PORT
-        self.Next = -1
-        self.Prev = -1
+        self.Next = PORT
+        self.Prev = PORT
         self.client_socket_prev = Client(-1)
         self.client_socket_next = Client(-1)
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -34,11 +37,11 @@ class Server_master(object):
         self.write_to_client = []  
         self.message_queues = {}  # servers' reply messages
         
+
     def _hash(self, key):
         """Hashes the key and returns its hash"""
-        while True:
-            self.hasher.update(key)
-            yield hexlify(self.hasher.digest())
+        self._hasher.update(key)
+        return self._hasher.hexdigest()
             
     def accept_connection(self):
         while True:
@@ -59,40 +62,45 @@ class Server_master(object):
                     elif data:
                         if data[:4] == 'next':
                             data=data.split(':')
-                            if self.Next != -1:
+                            if self.Next != self.PORT:
                                 self.client_socket_next.close_connection()
                                 logging.debug(str(self.PORT) + ' connection with '+str(self.Next)+ ' shutted')
                             self.Next = int(data[1])
-                            self.N_HOST=int(data[2])
-                            logging.debug(str(self.HOST)+'->'+str(self.N_HOST))
+                            self.N_hash=data[2]
                             if self.Next!=self.PORT:
                                 self.client_socket_next=Client(self.Next)
-                                self.message_queues[sock].put(str(self.HOST)+': Connection granted...' + str(self.N_HOST))
+                                self.message_queues[sock].put(self.HOST+': Connection granted...')
                         elif data[:4] == 'prev':
                             data=data.split(':')
-                            if self.Prev != -1:
+                            if self.Prev != self.PORT:
                                 self.client_socket_prev.close_connection()
                                 logging.debug(str(self.PORT) + ' connection with '+str(self.Prev)+ ' shutted')
                             self.Prev = int(data[1])
-                            self.P_HOST=int(data[2])
+                            self.P_hash = data[2]
                             if self.Prev!=self.PORT:
                                 self.client_socket_prev = Client(self.Prev)
-                                self.message_queues[sock].put(str(self.PORT)+': Connection granted...' + str(self.Prev))
+                                self.message_queues[sock].put(str(self.PORT)+': Connection granted...')
                         elif data[:4]=='join':
+                            
+                            self._network_size +=1
                             x = data.split(':')
-                            if self.HOST==self.N_HOST:
-                                self.message_queues[sock].put(str(self.PORT)+' '+str(self.HOST)+' '+str(self.PORT)+' '+str(self.N_HOST))
-                                logging.debug('Branch 1')
-                            elif self.HOST < int(x[1]):
-                                if int(x[1]) < self.N_HOST:
-                                    self.message_queues[sock].put(str(self.PORT)+' '+str(self.HOST)+' '+str(self.Next)+' '+str(self.N_HOST))
-                                    logging.debug('Branch 2')
-                                else:
-                                    self.message_queues[sock].put(self.client_socket_next.make_query(data))
-                                    logging.debug('Branch 3')
-                       
+                            logging.error(x[1]+' asked to join')
+                          
+                            if (self.myhash < x[1] < self.N_hash) or (x[1] <= self.N_hash <= self.myhash) or (self.N_hash <= self.myhash <= x[1]):
+                                self.message_queues[sock].put(str(self.PORT)+' '+self.myhash+' '+str(self.Next)+' '+self.N_hash)
+                                logging.error('node in front me mofos')
+                            else:
+                                self.message_queues[sock].put(self.client_socket_next.make_query(data))
+                                logging.error('Go to next')
+                            
+                                
                         elif data[:5]=='print':
-                            self.message_queues[sock].put(str(self.HOST)+'->'+self.client_socket_next.make_query('print'))
+                            if self._network_size > 1:
+                                self.message_queues[sock].put(self.HOST+'->'+self.client_socket_next.make_query('print:'+str(self._network_size-1)))
+                            else:
+                                self.message_queues[sock].put(self.HOST)
+                        elif data[:6]=='myhash':
+                            self.message_queues[sock].put(self._hash(data.split(':')[1]))
                         else:
                             self.message_queues[sock].put('You send me... ' + data)
                     if sock not in self.write_to_client:
