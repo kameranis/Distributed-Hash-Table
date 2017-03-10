@@ -38,7 +38,8 @@ class Server(object):
         self.write_to_client = []
         self.message_queues = {}  # servers' reply messages
         self._hasher=sha1()
-        
+
+    
     def _hash(self, key):
         """Hashes the key and returns its hash"""
         self._hasher.update(key)
@@ -46,20 +47,20 @@ class Server(object):
                         
     def DHT_join(self):
         self.myhash=self._hash(self.HOST) #self.master.make_query('myhash:'+self.HOST)
-        logging.error(self.myhash+': I want to join mofos')
-        x=self.master.make_query('join:'+self.myhash).split()
-        logging.debug('I am '+self.HOST+ ' PREV: '+x[1]+' NEXT: '+x[3])
-        self.P_hash=x[1]
-        self.N_hash=x[3]
-        x[0]=int(x[0])
-        x[1]=int(x[2])
+        logging.error(self.myhash + ': I want to join mofos')
+        x=self.master.make_query('join:' + self.myhash).split()
+        logging.debug('I am ' + self.HOST + ' PREV: ' + x[1] + ' NEXT: ' + x[3])
+        self.P_hash = x[1]
+        self.N_hash = x[3]
+        x[0] = int(x[0])
+        x[1] = int(x[2])
 
         self.client_socket_prev = Client(x[0])
-        self.client_socket_prev.make_query('next:' + str(self.PORT)+ ':'+self.myhash)
+        self.client_socket_prev.make_query('next:' + str(self.PORT)+ ':' + self.myhash)
         self.Prev = x[0]
 
         self.client_socket_next = Client(x[1])
-        self.client_socket_next.make_query('prev:' + str(self.PORT)+':'+self.myhash)
+        self.client_socket_next.make_query('prev:' + str(self.PORT)+':' + self.myhash)
         self.Next = x[1]
 
         self.master.close_connection()
@@ -107,7 +108,16 @@ class Server(object):
                             else:
                                 self.message_queues[sock].put(self.client_socket_next.make_query(data))
                                 logging.error('Go to next')
-                                                                    
+                        elif data[:3]=='bye':
+                            self.master = Client(self.m_PORT)
+                            self.master.send_info('depart:'+str(self.Prev)+':'+self.P_hash+':'+str(self.Next)+':'+self.N_hash+':'+str(self.PORT))
+                            logging.debug('Info sended')
+                            
+                        elif data.startswith('You are ready to depart'):
+                            self.message_queues[sock].put('I am ready to go')
+
+                        elif data.startswith('Shut down'):
+                            self.message_queues[sock].put('OK...Close')
                         elif data[:5]=='print':
                             x = data.split(':')
                             if int(x[1])>1:
@@ -126,7 +136,7 @@ class Server(object):
                     self.write_to_client.remove(sock)
                 else:
                     sock.send(next_msg)
-                    if next_msg =='OK...':
+                    if next_msg.startswith('OK...'):
                         if sock in self.write_to_client:
                             self.write_to_client.remove(sock)
                             logging.debug(str(self.PORT) + ' connection with client shutted')
@@ -134,8 +144,16 @@ class Server(object):
                         self.connection_list.remove(sock)
                         sock.close()
                         del self.message_queues[sock]
-
-
+                    if next_msg.startswith('OK...Close'):
+                        self.client_socket_prev.close_connection()
+                        logging.debug('Connection with my prev closed')
+                        self.client_socket_next.close_connection()
+                        logging.debug('Connection with my next closed')
+                        self.master.close_connection()
+                        logging.debug('Connection with my master closed')
+                        self.s.close()
+                        return
+                    
             for sock in error_sockets:
                 print >> sys.stderr, 'handling exceptional condition for', sock.getpeername()
                 # Stop listening for input on the connection

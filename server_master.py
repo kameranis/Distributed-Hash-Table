@@ -37,7 +37,6 @@ class Server_master(object):
         self.write_to_client = []  
         self.message_queues = {}  # servers' reply messages
         
-
     def _hash(self, key):
         """Hashes the key and returns its hash"""
         self._hasher.update(key)
@@ -59,6 +58,7 @@ class Server_master(object):
                     data = sock.recv(1024)
                     if data == 'quit':
                         self.message_queues[sock].put('OK...')
+                        
                     elif data:
                         if data[:4] == 'next':
                             data=data.split(':')
@@ -92,8 +92,39 @@ class Server_master(object):
                             else:
                                 self.message_queues[sock].put(self.client_socket_next.make_query(data))
                                 logging.error('Go to next')
-                            
-                                
+                        elif data.startswith('depart'):
+                            self._network_size-=1
+                            x = data.split(':')
+                            logging.debug('Depart starts')
+                            if int(x[1]) == self.PORT:
+                                self.client_socket_next.close_connection()
+                                logging.debug(str(self.PORT) + ' connection with '+str(self.Next)+ ' shutted')
+                                self.Next = int(x[3])
+                                self.N_hash=x[4]
+                                if self.Next!=self.PORT:
+                                    self.client_socket_next=Client(self.Next)
+                            else:                           
+                                p1 = Client(int(x[1]))
+                                p1.make_query('next:'+x[3]+':'+x[4])
+                                p1.close_connection()
+                            logging.debug('Prev updated')
+                            if int(x[3]) == self.PORT:
+                                self.client_socket_prev.close_connection()
+                                logging.debug(str(self.PORT) + ' connection with '+str(self.Prev)+ ' shutted')
+                                self.Prev = int(x[1])
+                                self.P_hash=x[2]
+                                if self.Prev!=self.PORT:
+                                    self.client_socket_prev=Client(self.Prev)
+                                    
+                            else:
+                                p1 = Client(int(x[3]))
+                                p1.make_query('prev:'+x[1]+':'+x[2])
+                                p1.close_connection()
+                            logging.debug('Next updated')
+                            p1 = Client(int(x[5]))
+                            #p1.make_query('You are ready to depart')
+                            p1.close_and_shut()
+                            logging.debug('Done')
                         elif data[:5]=='print':
                             if self._network_size > 1:
                                 self.message_queues[sock].put(self.HOST+'->'+self.client_socket_next.make_query('print:'+str(self._network_size-1)))
