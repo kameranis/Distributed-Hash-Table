@@ -12,15 +12,15 @@ from multiprocessing import Process, Queue
 import logging
 logging.basicConfig(filename='debug.log',level=logging.DEBUG)
 
-main_PORT=8882
 
 def g(q):
-    k = Server_master('1',main_PORT)
+    k = Server_master('1')
+    q.put(('1', k.get_port()))
     k.accept_connection()
 
     
-def f(temp,q):
-    p = Server(temp,main_PORT)
+def f(temp, main_port, q):
+    p = Server(temp, main_port)
     p.DHT_join()
     q.put((temp,p.get_port()))
     logging.debug('Server '+temp+ ' started...')
@@ -34,14 +34,21 @@ if __name__ == '__main__':
     q = Queue()
     p.append(Process(target=g,args=(q,)))
     p[0].start()
+    host, port = q.get()
+    hosts_and_ports[host] = port
+    main_port = port
     logging.debug('Server 1 started...')
     time.sleep(2)
     i=1
     while True:
         inp=raw_input('Number, query: ').split(', ')
-        if inp[1]=='join':
+        if inp[0] == 'print':
+            with Client(hosts_and_ports['1']) as cli:
+                print cli.make_query('print')
+
+        elif inp[1]=='join':
             temp=inp[0]
-            p.append(Process(target=f, args=(temp,q,)))
+            p.append(Process(target=f, args=(temp,main_port, q,)))
             p[i].start()
             t, port = q.get()
             hosts_and_ports[t]=port

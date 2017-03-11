@@ -18,21 +18,20 @@ from multiprocessing import Process, Queue
 
 logging.basicConfig(filename='DHT.log', level=logging.DEBUG)
 
-MAIN_PORT = 8881
 processes = []
 ports = {}
 
 
 def spawn_DHT(queue):
     """Creates the first DHT server"""
-    master_server = Server_master('1', MAIN_PORT)
+    master_server = Server_master('1')
     queue.put(('1', master_server.get_port()))
     master_server.accept_connection()
 
 
-def spawn_server(server_id, queue):
+def spawn_server(server_id, main_port, queue):
     """Spawns a new DHT server and calls its join method"""
-    new_server = Server(server_id, MAIN_PORT)
+    new_server = Server(server_id, main_port)
     new_server.DHT_join()
     queue.put((server_id, new_server.get_port()))
     logging.debug('Server {} started'.format(server_id))
@@ -81,12 +80,13 @@ def main():
     processes[0].start()
     server_id, port = queue.get()
     ports[server_id] = port
+    main_port = port
     logging.debug('DHT created')
     time.sleep(1)
 
     # Add another 9 nodes
     for i in xrange(2, 11):
-        processes.append(Process(target=spawn_server, args=(str(i), queue)))
+        processes.append(Process(target=spawn_server, args=(str(i), main_port, queue)))
         processes[-1].start()
         server_id, port = queue.get()
         ports[server_id] = port

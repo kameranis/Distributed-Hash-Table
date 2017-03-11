@@ -15,24 +15,24 @@ import logging
 logging.basicConfig(filename='debug.log',level=logging.ERROR)
 
 class Server_master(object):
-    def __init__(self, HOST, PORT):
+    def __init__(self, HOST):
         self._hasher=sha1(HOST)
         self._network_size = 1
         self.HOST = HOST
         self.myhash = self._hasher.hexdigest()
         self.N_hash = self.myhash
         self.P_hash = self.myhash
-        self.PORT = PORT
-        
+
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
-            self.s.bind(('', PORT))
+            self.s.bind(('', 0))
         except socket.error as msg:
             logging.error('Bind failed. Error Code : ' + str(msg[0]) + ' Message ' + msg[1])
             sys.exit()
+        self.PORT = self.s.getsockname()[1]
         self.s.listen(10)
         self.neighbors = Neighbors(-1,-1,self.PORT,self.PORT)
-        logging.debug(str(PORT)+' server created')
+        logging.debug(str(self.PORT)+' server created')
         self.connection_list = [self.s]  
         self.write_to_client = []  
         self.message_queues = {}  # servers' reply messages
