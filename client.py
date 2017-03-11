@@ -12,6 +12,13 @@ class Client(object):
             self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.client_socket.connect(('localhost', PORT))
 
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close_connection()
+        return False
+
+    def __enter__(self):
+        return self
+
     def make_query(self, question):
         self.client_socket.send(question)
         return self.client_socket.recv(1024)
