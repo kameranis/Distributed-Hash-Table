@@ -5,10 +5,9 @@ import select
 import Queue
 import sys
 import logging
-import request
+import thread
 
-from neighbors import Neighbors
-from client import Client
+from neighbors import Neighbors, find_neighbors, send_request
 from hashlib import sha1
 from binascii import hexlify
 
@@ -32,14 +31,12 @@ class Server(object):
         self.s.listen(10)
 
         self.neighbors = Neighbors(-1,-1,self.PORT,self.PORT)
-        self.master = Client(-1)
-        
+                
         logging.debug(str(self.PORT)+' server created')
         self.connection_list = [self.s]
         self.write_to_client = []
         self.message_queues = {}  # servers' reply messages
         self._hasher=sha1()
-
     
     def _hash(self, key):
         """Hashes the key and returns its hash"""
@@ -48,7 +45,7 @@ class Server(object):
                         
     def DHT_join(self):
         self.myhash=self._hash(self.HOST)
-        x =  request.find_neighbors(self.myhash,self.m_PORT)
+        x =  find_neighbors(self.myhash,self.m_PORT)
         
         self.P_hash = x[1]
         self.N_hash = x[3]
@@ -91,15 +88,15 @@ class Server(object):
                                 self.message_queues[sock].put(self.neighbors.send_front(data))
                                 logging.error('Go to next')
                         elif data.startswith('bye'):
-                            self.master = Client(self.m_PORT)
-                            self.master.send_info('depart:'+str(self.neighbors.get_back())+':'+self.P_hash+':'+str(self.neighbors.get_front())+':'+self.N_hash+':'+str(self.PORT))
-                            logging.debug('Info sended')
-                            
+                            answer  = 'depart:'+str(self.neighbors.get_back())+':'+self.P_hash+':'+str(self.neighbors.get_front())+':'+self.N_hash+':'+str(self.PORT)
+                            thread.start_new_thread(send_request,(self.m_PORT,answer,))
+                        
                         elif data.startswith('You are ready to depart'):
                             self.message_queues[sock].put('I am ready to go')
 
                         elif data.startswith('Shut down'):
                             self.message_queues[sock].put('OK...Close')
+                            
                         elif data[:5]=='print':
                             x = data.split(':')
                             if int(x[1])>1:
@@ -128,8 +125,6 @@ class Server(object):
                         del self.message_queues[sock]
                     if next_msg.startswith('OK...Close'):
                         del self.neighbors
-                        self.master.close_connection()
-                        logging.debug('Connection with my master closed')
                         self.s.close()
                         return
                     

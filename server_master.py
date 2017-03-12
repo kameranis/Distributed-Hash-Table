@@ -5,13 +5,13 @@ import select
 import Queue
 import re
 import sys
-import request
+import threading
+import logging
 
-from neighbors import Neighbors
+from neighbors import Neighbors, send_request, close_server
 from hashlib import sha1
 from binascii import hexlify
-from client import Client
-import logging
+
 logging.basicConfig(filename='debug.log',level=logging.ERROR)
 
 class Server_master(object):
@@ -22,15 +22,15 @@ class Server_master(object):
         self.myhash = self._hasher.hexdigest()
         self.N_hash = self.myhash
         self.P_hash = self.myhash
-
+                
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             self.s.bind(('', 0))
         except socket.error as msg:
             logging.error('Bind failed. Error Code : ' + str(msg[0]) + ' Message ' + msg[1])
             sys.exit()
-        self.PORT = self.s.getsockname()[1]
         self.s.listen(10)
+        self.PORT = self.s.getsockname()[1]
         self.neighbors = Neighbors(-1,-1,self.PORT,self.PORT)
         logging.debug(str(self.PORT)+' server created')
         self.connection_list = [self.s]  
@@ -88,22 +88,21 @@ class Server_master(object):
                             if int(x[1]) == self.PORT:
                                 self.neighbors.update_front(self.PORT,int(x[3]))
                                 self.N_hash = x[4]
-                            else:                           
-                                p1 = Client(int(x[1]))
-                                p1.make_query('next:'+x[3]+':'+x[4])
-                                p1.close_connection()
+                            else:
+                                t = threading.Thread(target=send_request, args=(int(x[1]),'next:'+x[3]+':'+x[4],))
+                                t.start()
+                                t.join()
                             logging.debug('Prev updated')
                             if int(x[3]) == self.PORT:
                                 self.neighbors.update_back(self.PORT,int(x[1]))
                                 self.P_hash = x[2]
                             else:
-                                p1 = Client(int(x[3]))
-                                p1.make_query('prev:'+x[1]+':'+x[2])
-                                p1.close_connection()
+                                t = threading.Thread(target=send_request,args= (int(x[3]),'prev:'+x[1]+':'+x[2],))
+                                t.start()
+                                t.join()
                             logging.debug('Next updated')
-                            p1 = Client(int(x[5]))
-                            p1.close_and_shut()
-                            logging.debug('Done')
+                            threading.Thread(target=close_server, args = (int(x[5]),)).start()
+                            self.message_queues[sock].put('Your job completed')
                         elif data.startswith('print'):
                             if self._network_size > 1:
                                 self.message_queues[sock].put(self.HOST+'->'+ self.neighbors.send_front('print:'+str(self._network_size-1)))
@@ -132,7 +131,6 @@ class Server_master(object):
                         sock.close()
                         del self.message_queues[sock]
                                        
-
             for sock in error_sockets:
                 print >> sys.stderr, 'handling exceptional condition for', sock.getpeername()
                 # Stop listening for input on the connection

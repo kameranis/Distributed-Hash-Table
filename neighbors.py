@@ -1,9 +1,10 @@
-
-
 from client import Client
 
+import sys
 import logging
 logging.basicConfig(filename='debug.log',level=logging.DEBUG)
+
+''' Class tha implements the neighbors of a server in DHT '''
 
 class Neighbors(object):
 
@@ -60,4 +61,28 @@ class Neighbors(object):
     def get_back(self):
         return self.back_port
 
+''' Some usefull functions '''
 
+def find_neighbors(hash_value,PORT):
+    logging.debug(hash_value + ': I want to join mofos')
+    y = Client(PORT)
+    x = y.make_query('join:' + hash_value).split()
+    x[0] = int(x[0])
+    x[2] = int(x[2])
+    y.close_connection()
+    logging.debug('Neighbors found: '+str(x[0]) + ' ' +str(x[2]))
+    
+    return x
+                                
+def send_request(PORT,message):
+    x = Client(PORT)
+    x.make_query(message)
+    x.close_connection()
+    sys.exit()
+
+def close_server(port):
+    cl = Client(port)
+    cl.close_and_shut()
+    sys.exit()
+
+                                                  

@@ -40,7 +40,6 @@ class Client(object):
         logging.debug('Quit gracefully')
         self.client_socket.close()
 
-        
     def get_socket(self):
         return self.client_socket
 
