@@ -27,11 +27,15 @@ class Client(object):
         self.client_socket.send(info)
         
     def close_connection(self):
-        self.client_socket.send('quit')
-        logging.debug('Ask permission to quit '+str(self.PORT))
-        self.client_socket.recv(1024)
-        logging.debug('Quit gracefully')
-        self.client_socket.close()
+        try:
+            self.client_socket.send('quit')
+            logging.debug('Ask permission to quit '+str(self.PORT))
+        except socket.error:
+            pass
+        else:
+            self.client_socket.recv(1024)
+            logging.debug('Quit gracefully')
+            self.client_socket.close()
 
     def close_and_shut(self):
         self.client_socket.send('Shut down')

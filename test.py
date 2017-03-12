@@ -17,6 +17,7 @@ def g(q):
     k = Server_master('1')
     q.put(('1', k.get_port()))
     k.accept_connection()
+    sys.exit()
 
     
 def f(temp, main_port, q):
@@ -57,6 +58,8 @@ if __name__ == '__main__':
             x = Client(hosts_and_ports[inp[0]])
             x.send_info('bye')
             x.close_connection()
+            if inp[0] == '1':
+                break
             
         time.sleep(2)
 
