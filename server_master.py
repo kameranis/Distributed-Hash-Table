@@ -22,7 +22,9 @@ class Server_master(object):
         self.myhash = self._hasher.hexdigest()
         self.N_hash = self.myhash
         self.P_hash = self.myhash
-
+        self.data = {}
+        self.replication = 1
+        self.data_lock = threading.Lock()
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             self.s.bind(('', 0))
@@ -42,6 +44,39 @@ class Server_master(object):
         """Hashes the key and returns its hash"""
         self._hasher.update(key)
         return self._hasher.hexdigest()
+
+    def _insert(self, sock, data):
+        x = data.split(':')
+        logging.debug('Hash: {}, inserting {}'.format(self.myhash, x[3]))
+        key = sha1(x[3]).hexdigest
+        if x[1] == '-1':
+            if self.belongs_here(key):
+                logging.debug('Hash: {}, {} belongs here'.format(self.myhash, x[3]))
+                x[1] = self.myhash
+                x[2] = str(self.replication - 1)
+                self.data_lock.acquire()
+                self.data[key] = x[4]
+                self.data_lock.release()
+                if x[2] != '0':
+                    self.message_queues[sock].put(self.neighbors.send_front(':'.join(x)))
+                return
+
+        else:
+            if x[1] != self.myhash:
+                if self.data.get(key, -1) != x[4]:
+                    self.data_lock.acquire()
+                    self.data[key] = x[4]
+                    self.data_lock.release()
+                    x[2] = str(int(x[2]) - 1)
+        logging.debug('{} {} {} {}'.format(x[2], x[1], int(x[2]) != 0, x[1] != self.myhash))
+        if (int(x[2]) != 0) and (x[1] != self.myhash):
+            answer = self.neighbors.send_front(':'.join(x))
+            self.message_queues[sock].put(answer)
+        else:
+            self.message_queues[sock].put(':'.join(x[-2:]))
+
+    def belongs_here(self, key):
+        return (self.myhash < key < self.N_hash) or (key <= self.N_hash <= self.myhash) or (self.N_hash <= self.myhash <= key)
 
     def accept_connection(self):
         while True:
@@ -116,12 +151,13 @@ class Server_master(object):
                         elif data.startswith('bye'):
                             self.close = True
                             threading.Thread(target=send_request, args=(self.neighbors.front_port, 'bye',)).start()
-
+                        elif data.startswith('insert'):
+                            self._insert(sock, data)
                         elif data.startswith('print'):
                             if self._network_size > 1:
-                                self.message_queues[sock].put(self.HOST+'->'+ self.neighbors.send_front('print:'+str(self._network_size-1)))
+                                self.message_queues[sock].put(self.HOST+str(self.data)+'->'+ self.neighbors.send_front('print:'+str(self._network_size-1)))
                             else:
-                                self.message_queues[sock].put(self.HOST)
+                                self.message_queues[sock].put(self.HOST+str(self.data))
                         elif data[:6]=='myhash':
                             self.message_queues[sock].put(self._hash(data.split(':')[1]))
                         else:

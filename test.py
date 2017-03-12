@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-
+import random
 import socket
 import time
 import sys
@@ -54,6 +54,11 @@ if __name__ == '__main__':
             t, port = q.get()
             hosts_and_ports[t]=port
             i+=1
+        elif inp[1] == 'insert':
+            host = random.sample(hosts_and_ports, 1)[0]
+            port = hosts_and_ports[host]
+            with Client(port) as cli:
+                cli.make_query('insert:-1:-1:{}:{}'.format(inp[0], inp[2]))
         else:
             x = Client(hosts_and_ports[inp[0]])
             x.send_info('bye')

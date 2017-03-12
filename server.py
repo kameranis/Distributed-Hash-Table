@@ -5,7 +5,7 @@ import select
 import Queue
 import sys
 import logging
-import thread
+import threading
 
 from neighbors import Neighbors, find_neighbors, send_request
 from hashlib import sha1
@@ -19,8 +19,10 @@ class Server(object):
         self.myhash = ''
         self.N_hash = ''
         self.P_hash = ''
+        self.data = {}
+        self.replication = 1
         self.m_PORT=master
-                       
+        self.data_lock = threading.Lock()
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             self.s.bind(('', 0))
@@ -42,7 +44,36 @@ class Server(object):
         """Hashes the key and returns its hash"""
         self._hasher.update(key)
         return self._hasher.hexdigest()
-                        
+
+    def _insert(self, sock, data):
+        x = data.split(':')
+        logging.debug('Hash: {}, inserting {}'.format(self.myhash, x[3]))
+        key = sha1(x[3]).hexdigest()
+        if x[1] == '-1':
+            if self.belongs_here(key):
+                logging.debug('Hash: {}, {} belongs here'.format(self.myhash, x[3]))
+                x[1] = self.myhash
+                x[2] = str(self.replication - 1)
+                self.data_lock.acquire()
+                self.data[key] = x[4]
+                self.data_lock.release()
+
+        else:
+            if x[1] != self.myhash:
+                if self.data.get(key, -1) != x[4]:
+                    self.data_lock.acquire()
+                    self.data[key] = x[4]
+                    self.data_lock.release()
+                    x[2] = str(int(x[2]) - 1)
+        if (int(x[2]) != 0) and (x[1] != self.myhash):
+            answer = self.neighbors.send_front(':'.join(x))
+            self.message_queues[sock].put(answer)
+        else:
+            self.message_queues[sock].put(':'.join(x[-2:]))
+
+    def belongs_here(self, key):
+        return (self.myhash < key < self.N_hash) or (key <= self.N_hash <= self.myhash) or (self.N_hash <= self.myhash <= key)
+
     def DHT_join(self):
         self.myhash=self._hash(self.HOST)
         x =  find_neighbors(self.myhash,self.m_PORT)
@@ -89,20 +120,21 @@ class Server(object):
                                 logging.error('Go to next')
                         elif data.startswith('bye'):
                             answer  = 'depart:'+str(self.neighbors.get_back())+':'+self.P_hash+':'+str(self.neighbors.get_front())+':'+self.N_hash+':'+str(self.PORT)
-                            thread.start_new_thread(send_request,(self.m_PORT,answer,))
+                            threading.Thread(target=send_request,args=(self.m_PORT,answer,)).start()
                         
                         elif data.startswith('You are ready to depart'):
                             self.message_queues[sock].put('I am ready to go')
 
                         elif data.startswith('Shut down'):
                             self.message_queues[sock].put('OK...Close')
-                            
+                        elif data.startswith('insert'):
+                            self._insert(sock, data)
                         elif data[:5]=='print':
                             x = data.split(':')
                             if int(x[1])>1:
-                                self.message_queues[sock].put(self.HOST+'->'+self.neighbors.send_front('print:'+str(int(x[1])-1)))
+                                self.message_queues[sock].put(self.HOST+str(self.data)+'->'+self.neighbors.send_front('print:'+str(int(x[1])-1)))
                             else:
-                                self.message_queues[sock].put(self.HOST)
+                                self.message_queues[sock].put(self.HOST+str(self.data))
                         else:
                             self.message_queues[sock].put('You send me... ' + data)
                     if sock not in self.write_to_client:
