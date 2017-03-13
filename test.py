@@ -1,86 +1,122 @@
 #!/usr/bin/env python
 import random
-import socket
 import time
 import sys
-
-from server import Server
-from server_master import Server_master 
-from client import Client
-from multiprocessing import Process, Queue
-
 import logging
-logging.basicConfig(filename='debug.log',level=logging.DEBUG)
 
-help_dict = {'join':'Number, join', 'depart':'Number, depart', 'DHT destroy':'exit', 'print DHT': 'print'}
+from multiprocessing import Process, Queue
+from client import Client
+from server import Server
+from server_master import Server_master
 
-def g(q):
-    k = Server_master('1')
-    q.put(('1', k.get_port()))
-    k.accept_connection()
-    sys.exit()
 
-    
-def f(temp, main_port, q):
-    p = Server(temp, main_port)
-    p.DHT_join()
-    q.put((temp,p.get_port()))
-    logging.debug('Server '+temp+ ' started...')
-    p.accept_connection()
-    sys.exit()           
+logging.basicConfig(filename='debug.log', level=logging.DEBUG)
 
-if __name__ == '__main__':
-    p=[]
-    hosts_and_ports = {}
-    q = Queue()
-    p.append(Process(target=g,args=(q,)))
-    p[0].start()
-    host, port = q.get()
-    hosts_and_ports[host] = port
-    main_port = port
+help_dict = {'join': 'join, ID',
+             'depart': 'depart, ID',
+             'DHT destroy': 'exit',
+             'Insert': 'insert, key, value',
+             'Query': 'query, key',
+             'Help': 'help',
+             'print DHT': 'print'}
+
+processes = []
+ports = {}
+queue = Queue()
+main_port = None
+
+
+def main():
+    global main_port
+    processes.append(Process(target=create_DHT, args=(queue,)))
+    processes[0].start()
+    host, main_port = queue.get()
+    ports[host] = main_port
     logging.debug('Server 1 started...')
-    time.sleep(2)
-    i=1
-    print "''''''''''''''''''''''''''''''''''''''''"
-    print '---COMMAND LIST---'
-    for key, value in help_dict.iteritems():
-        print ': '.join([key,value])
-    print "''''''''''''''''''''''''''''''''''''''''"
-
+    time.sleep(1)
+    help('')
     while True:
-        inp=raw_input('Action: ').split(', ')
-        if inp[0] == 'print':
-            with Client(hosts_and_ports['1']) as cli:
-                print cli.make_query('print')
+        command = raw_input('Action: ').split(', ')
+        fun = command_dict.get(command[0], bad_command)
+        fun(command)
 
-        elif inp[0] == 'exit':
-            x = Client(hosts_and_ports['1'])
-            x.send_info('bye')
-            x.close_connection()
+        if command[0] == 'exit':
             break
-        elif inp[1]=='join':
-            temp=inp[0]
-            p.append(Process(target=f, args=(temp,main_port, q,)))
-            p[i].start()
-            t, port = q.get()
-            hosts_and_ports[t]=port
-            i+=1
-        elif inp[1] == 'insert':
-            host = random.sample(hosts_and_ports, 1)[0]
-            port = hosts_and_ports[host]
-            with Client(port) as cli:
-                cli.make_query('insert:-1:-1:{}:{}'.format(inp[0], inp[2]))
-       
-        else:
-            x = Client(hosts_and_ports[inp[0]])
-            x.send_info('depart')
-            x.close_connection()
-            
-        time.sleep(2)
-
-    for j in xrange(i):
-        p[j].join()
-        
+        time.sleep(1)
+    for p in processes:
+        p.join()
     logging.debug('END')
 
 
+def bad_command(command):
+    sys.stderr.write('Bad command: {}\n'.format(', '.join(command)) )
+
+
+def join(command):
+    server_id = command[1]
+    processes.append(Process(target=spawn_server, args=(server_id, main_port, queue,)))
+    processes[-1].start()
+    t, port = queue.get()
+    ports[t] = port
+
+
+def depart(command):
+    with Client(ports[command[1]]) as x:
+        x.send_info('depart')
+
+
+def DHT_destroy(command):
+    with Client(ports['1']) as x:
+        x.send_info('bye')
+
+
+def insert(command):
+    host = random.sample(ports, 1)[0]
+    port = ports[host]
+    with Client(port) as cli:
+        cli.make_query('insert:-1:-1:{}:{}'.format(command[1], command[2]))
+
+
+def query(command):
+    raise NotImplementedError
+
+
+def DHT_print(command):
+    with Client(ports['1']) as cli:
+        print cli.make_query('print')
+
+
+def help(command):
+    print "+--------------------------------------+"
+    print '+------------COMMAND LIST--------------+'
+    for key, value in help_dict.iteritems():
+        print '| {:>14}: {:<20} |'.format(key, value)
+    print "+--------------------------------------+"
+
+
+def create_DHT(queue):
+    k = Server_master('1')
+    queue.put(('1', k.get_port()))
+    k.accept_connection()
+    sys.exit()
+
+
+def spawn_server(server_id, main_port, queue):
+    server = Server(server_id, main_port)
+    server.DHT_join()
+    queue.put((server_id, server.get_port()))
+    logging.debug('Server ' + server_id + ' started...')
+    server.accept_connection()
+    sys.exit()
+
+
+command_dict = {'join': join,
+                'depart': depart,
+                'exit': DHT_destroy,
+                'insert': insert,
+                'query': query,
+                'print': DHT_print}
+
+
+if __name__ == '__main__':
+    main()
