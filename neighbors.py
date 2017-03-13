@@ -1,5 +1,6 @@
 from client import Client
 
+import time
 import sys
 import logging
 logging.basicConfig(filename='debug.log',level=logging.DEBUG)
@@ -14,9 +15,11 @@ class Neighbors(object):
         self.back_port = b_port
         self.front_port = n_port
 
-    def __del__(self):
-        self.back.close_connection()
-        self.front.close_connection()
+    def destroy(self,port):
+        if port != self.back_port:
+            self.back.close_connection()
+        if port != self.front_port:
+            self.front.close_connection()
         logging.debug('Neighbors closed gracefully')
         
     def create_back(self,new_back,port1,myhash):
@@ -64,7 +67,6 @@ class Neighbors(object):
 ''' Some usefull functions '''
 
 def find_neighbors(hash_value,PORT):
-    logging.debug(hash_value + ': I want to join mofos')
     y = Client(PORT)
     x = y.make_query('join:' + hash_value).split()
     x[0] = int(x[0])
@@ -78,11 +80,28 @@ def send_request(PORT,message):
     x = Client(PORT)
     x.make_query(message)
     x.close_connection()
-    sys.exit()
-
+    
+def send_request2(PORT,message):
+    x = Client(PORT)
+    x.send_info(message)
+    x.close_connection()
+    
 def close_server(port):
     cl = Client(port)
+    logging.debug('Shut Client ON')
     cl.close_and_shut()
     sys.exit()
 
-                                                  
+def DHT_close(self,size,port):
+    x = size
+    for i in xrange(x-1):
+        logging.debug('NEXT PREPARE TO GET DESTROYED')
+        send_request2(port, 'depart')
+        time.sleep(1)
+        logging.debug('MY NEXT IS DEAD NOW BUAHAHA')
+    #self.s.close()
+    #del self.neighbors
+    logging.debug('Shutdown complete')
+    #sys.exit()
+
+                                                                                                            

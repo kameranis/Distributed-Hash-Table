@@ -12,6 +12,7 @@ from multiprocessing import Process, Queue
 import logging
 logging.basicConfig(filename='debug.log',level=logging.DEBUG)
 
+help_dict = {'join':'Number, join', 'depart':'Number, depart', 'DHT destroy':'exit', 'print DHT': 'print'}
 
 def g(q):
     k = Server_master('1')
@@ -29,7 +30,6 @@ def f(temp, main_port, q):
     sys.exit()           
 
 if __name__ == '__main__':
-    #lock = Lock()
     p=[]
     hosts_and_ports = {}
     q = Queue()
@@ -41,12 +41,23 @@ if __name__ == '__main__':
     logging.debug('Server 1 started...')
     time.sleep(2)
     i=1
+    print "''''''''''''''''''''''''''''''''''''''''"
+    print '---COMMAND LIST---'
+    for key, value in help_dict.iteritems():
+        print ': '.join([key,value])
+    print "''''''''''''''''''''''''''''''''''''''''"
+
     while True:
-        inp=raw_input('Number, query: ').split(', ')
+        inp=raw_input('Action: ').split(', ')
         if inp[0] == 'print':
             with Client(hosts_and_ports['1']) as cli:
                 print cli.make_query('print')
 
+        elif inp[0] == 'exit':
+            x = Client(hosts_and_ports['1'])
+            x.send_info('bye')
+            x.close_connection()
+            break
         elif inp[1]=='join':
             temp=inp[0]
             p.append(Process(target=f, args=(temp,main_port, q,)))
@@ -59,12 +70,11 @@ if __name__ == '__main__':
             port = hosts_and_ports[host]
             with Client(port) as cli:
                 cli.make_query('insert:-1:-1:{}:{}'.format(inp[0], inp[2]))
+       
         else:
             x = Client(hosts_and_ports[inp[0]])
-            x.send_info('bye')
+            x.send_info('depart')
             x.close_connection()
-            if inp[0] == '1':
-                break
             
         time.sleep(2)
 
@@ -72,9 +82,5 @@ if __name__ == '__main__':
         p[j].join()
         
     logging.debug('END')
-#x = server('',8888)
-#x.accept_connection()
-#print x.get_port()
-
 
 

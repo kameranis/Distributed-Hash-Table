@@ -29,19 +29,19 @@ class Client(object):
     def close_connection(self):
         try:
             self.client_socket.send('quit')
-            logging.debug('Ask permission to quit '+str(self.PORT))
+            
         except socket.error:
-            pass
+            print 'socket error'
         else:
             self.client_socket.recv(1024)
-            logging.debug('Quit gracefully')
+            
             self.client_socket.close()
 
     def close_and_shut(self):
         self.client_socket.send('Shut down')
-        logging.debug('Ask permission to quit '+str(self.PORT))
+        
         self.client_socket.recv(1024)
-        logging.debug('Quit gracefully')
+        
         self.client_socket.close()
 
     def get_socket(self):
