@@ -20,7 +20,7 @@ help_dict = {'join': 'join, ID',
              'Help': 'help',
              'print DHT': 'print'}
 
-processes = []
+processes = {}
 ports = {}
 queue = Queue()
 main_port = None
@@ -31,8 +31,8 @@ def main():
 
     Acts as a terminal towards the DHT"""
     global main_port
-    processes.append(Process(target=create_DHT, args=()))
-    processes[0].start()
+    processes['1'] = Process(target=create_DHT, args=())
+    processes['1'].start()
     host, main_port = queue.get()
     ports[host] = main_port
     logging.debug('Server 1 started...')
@@ -46,7 +46,7 @@ def main():
         if command[0] == 'exit':
             break
         time.sleep(1)
-    for proc in processes:
+    for proc in processes.values:
         proc.join()
     logging.debug('END')
 
@@ -60,8 +60,8 @@ def join(command):
     """Creates a new server in a new process.
     Keeps the processes and ports updated"""
     server_id = command[1]
-    processes.append(Process(target=spawn_server, args=(server_id,)))
-    processes[-1].start()
+    processes[server_id] = Process(target=spawn_server, args=(server_id,))
+    processes[server_id].start()
     host, port = queue.get()
     ports[host] = port
 
@@ -70,6 +70,9 @@ def depart(command):
     """Commands the server to shut down"""
     with Client(ports[command[1]]) as cli:
         cli.send_info(command[0])
+    processes[command[1]].join()
+    del processes[command[1]]
+    del ports[command[1]]
 
 
 def DHT_destroy(command):
