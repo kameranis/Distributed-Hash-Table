@@ -27,14 +27,17 @@ main_port = None
 
 
 def main():
+    """Main script
+
+    Acts as a terminal towards the DHT"""
     global main_port
-    processes.append(Process(target=create_DHT, args=(queue,)))
+    processes.append(Process(target=create_DHT, args=()))
     processes[0].start()
     host, main_port = queue.get()
     ports[host] = main_port
     logging.debug('Server 1 started...')
     time.sleep(1)
-    help('')
+    print_help('')
     while True:
         command = raw_input('Action: ').split(', ')
         fun = command_dict.get(command[0], bad_command)
@@ -43,50 +46,59 @@ def main():
         if command[0] == 'exit':
             break
         time.sleep(1)
-    for p in processes:
-        p.join()
+    for proc in processes:
+        proc.join()
     logging.debug('END')
 
 
 def bad_command(command):
-    sys.stderr.write('Bad command: {}\n'.format(', '.join(command)) )
+    """Informs the user that he has enterred an invalid command"""
+    sys.stderr.write('Bad command: {}\n'.format(', '.join(command)))
 
 
 def join(command):
+    """Creates a new server in a new process.
+    Keeps the processes and ports updated"""
     server_id = command[1]
-    processes.append(Process(target=spawn_server, args=(server_id, main_port, queue,)))
+    processes.append(Process(target=spawn_server, args=(server_id,)))
     processes[-1].start()
-    t, port = queue.get()
-    ports[t] = port
+    host, port = queue.get()
+    ports[host] = port
 
 
 def depart(command):
-    with Client(ports[command[1]]) as x:
-        x.send_info('depart')
+    """Commands the server to shut down"""
+    with Client(ports[command[1]]) as cli:
+        cli.send_info(command[0])
 
 
 def DHT_destroy(command):
-    with Client(ports['1']) as x:
-        x.send_info('bye')
+    """Forces the whole DHT to shutdown"""
+    with Client(ports['1']) as cli:
+        cli.send_info('bye')
 
 
 def insert(command):
+    """Sends a requests to a random server to insert a (key, value) pair"""
     host = random.sample(ports, 1)[0]
     port = ports[host]
     with Client(port) as cli:
-        cli.make_query('insert:-1:-1:{}:{}'.format(command[1], command[2]))
+        cli.make_query('{}:-1:-1:{}:{}'.format(*command))
 
 
 def query(command):
+    """Queries a random server for the value of a key"""
     raise NotImplementedError
 
 
 def DHT_print(command):
+    """Requests the DHT topology from the master server"""
     with Client(ports['1']) as cli:
-        print cli.make_query('print')
+        print cli.make_query(command[0])
 
 
-def help(command):
+def print_help(command):
+    """Prints a helping message to the user"""
     print "+--------------------------------------+"
     print '+------------COMMAND LIST--------------+'
     for key, value in help_dict.iteritems():
@@ -94,14 +106,17 @@ def help(command):
     print "+--------------------------------------+"
 
 
-def create_DHT(queue):
+def create_DHT():
+    """Creates the master server of the DHT"""
     k = Server_master('1')
     queue.put(('1', k.get_port()))
     k.accept_connection()
     sys.exit()
 
 
-def spawn_server(server_id, main_port, queue):
+def spawn_server(server_id):
+    """Creates a new server, has him join the DHT
+    and accept any incoming connections"""
     server = Server(server_id, main_port)
     server.DHT_join()
     queue.put((server_id, server.get_port()))
