@@ -18,7 +18,7 @@ class Server(object):
         # Every new implemented method must be added to the dictionary with 'key' a unique identifier like below 
         self.operations = {'next': self._update_my_front, 'prev': self._update_my_back, 'join': self._join, 'depart': self._depart, 'insert':self._insert, 'print': self._print, 'None': self._reply}
         # If we only want just to reply, we add to this dict as key:value -> read_message:reply_message
-        self.replies = {'You are ready to depart': 'I am ready to depart', 'Shut down': 'OK...Close', 'quit': 'OK...'}
+        self.replies = {'You are ready to depart': 'I am ready to depart', 'Shut down': '123456', 'quit': '12345'}
 
         self.HOST = HOST
         self.myhash = sha1(HOST).hexdigest()
@@ -43,7 +43,7 @@ class Server(object):
         self.connection_list = [self.s]
         self.write_to_client = []
         self.message_queues = {}  # servers' reply messages
-        
+
     def DHT_join(self):
         x =  find_neighbors(self.myhash,self.m_PORT)
         self.P_hash = x[1]
@@ -121,20 +121,33 @@ class Server(object):
 
     def _reply(self,data,sock):
         self.message_queues[sock].put(self.replies.get(data,'Server cant support this operation'))
-        
-    def _total_shut(self,next_msg,sock):
-        if next_msg.startswith('OK...'):
+
+    def _quit(self,data,sock):
+        if data == '12345':
             if sock in self.write_to_client:
                 self.write_to_client.remove(sock)
-                                
-                self.connection_list.remove(sock)
+               
+            self.connection_list.remove(sock)
             sock.close()
-            del self.message_queues[sock]
-        if next_msg.startswith('OK...Close'):
+            del self.message_queues[sock]        
+            logging.debug('Quit completed')
+        
+    def _shut(self,data,sock):
+        if data.startswith('123456'):
             self.neighbors.destroy(self.PORT)
             self.s.close()
             sys.exit()
         
+    
+    def _total_shut(self,next_msg,sock):
+        self._quit(next_msg,sock)
+        self._shut(next_msg,sock)
+        # if next_msg.startswith('123456'):
+        #self.neighbors.destroy(self.PORT)
+        #self.s.close()
+        #    sys.exit()
+    
+    
     def accept_connection(self):
         while True:
             read_sockets, write_sockets, error_sockets = select.select(self.connection_list, self.write_to_client,
@@ -148,6 +161,7 @@ class Server(object):
 
                 else:
                     data = sock.recv(1024)
+                    #self.operations.get(data.split(':')[0],self._reply)(data,sock)
                     self.operations.get( (['None'] + [key for key in self.operations if data.startswith(key)]).pop() )(data,sock) 
                     
                     if sock not in self.write_to_client:
@@ -160,6 +174,7 @@ class Server(object):
                     self.write_to_client.remove(sock)
                 else:
                     sock.send(next_msg)
+           
                     self._total_shut(next_msg,sock)
                     
             for sock in error_sockets:

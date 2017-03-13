@@ -31,7 +31,8 @@ class Server_master(Server):
         x = data.split(':')
         logging.debug('Depart starts')
         if int(x[1]) == self.PORT:
-            self.neighbors.update_front(self.PORT,int(x[3]))
+            self.neighbors.update_front(self.PORT, int(x[3]))
+            #t = threading.Thread(target=self.neighbors.update_front, args=(self.PORT, int(x[3])))
             self.N_hash = x[4]
         else:
             t = threading.Thread(target=send_request, args=(int(x[1]),'next:'+x[3]+':'+x[4],))
@@ -39,7 +40,8 @@ class Server_master(Server):
             t.join()
         logging.debug('Prev updated')
         if int(x[3]) == self.PORT:
-            self.neighbors.update_back(self.PORT,int(x[1]))
+            self.neighbors.update_back(self.PORT, int(x[1]))
+            #t = threading.Thread(target=self.neighbors.update_back, args=(self.PORT, int(x[1])))
             self.P_hash = x[2]
         else:
             t = threading.Thread(target=send_request,args= (int(x[3]),'prev:'+x[1]+':'+x[2],))
@@ -47,8 +49,8 @@ class Server_master(Server):
             t.join()
         logging.debug('Next updated')
         threading.Thread(target=close_server, args = (int(x[5]),)).start()
-        self.message_queues[sock].put('Your job completed')
-        self._network_size-=1
+        self.message_queues[sock].put('Your job is completed')
+        self._network_size -= 1
         logging.debug('Depart ends')
         
         if self.close and (int(x[3]) == self.PORT) and (int(x[1]) == self.PORT):
@@ -61,7 +63,6 @@ class Server_master(Server):
             logging.debug('Shutting down, closing {}'.format(self.N_hash))
             threading.Thread(target=send_request, args=(self.neighbors.front_port, 'depart')).start()
         
-         
     def _bye(self,data,sock):
         self.close = True
         #threading.Thread(target=self.DHT_close, args=(self._network_size,)).start()
@@ -75,10 +76,4 @@ class Server_master(Server):
             self.message_queues[sock].put(self.HOST)
 
     def _total_shut(self,next_msg,sock):
-        if next_msg.startswith('OK...'):
-            if sock in self.write_to_client:
-                self.write_to_client.remove(sock)
-                
-            self.connection_list.remove(sock)
-            sock.close()
-            del self.message_queues[sock]
+        self._quit(next_msg,sock)

@@ -17,26 +17,28 @@ class Neighbors(object):
 
     def destroy(self,port):
         if port != self.back_port:
-            self.back.close_connection()
+            self.back.communication('quit')
         if port != self.front_port:
-            self.front.close_connection()
+            self.front.communication('quit')
         logging.debug('Neighbors closed gracefully')
         
     def create_back(self,new_back,port1,myhash):
         self.back = Client(new_back)
-        self.back.make_query('next:' + str(port1)+ ':' + myhash)
+        logging.debug('1')
+        self.back.communication('next:' + str(port1)+ ':' + myhash)
+        logging.debug('2')
         self.back_port = new_back
         logging.debug('Back neighbor created')
         
     def create_front(self,new_front,port1,myhash):
         self.front = Client(new_front)
-        self.front.make_query('prev:' + str(port1)+ ':' + myhash)
+        self.front.communication('prev:' + str(port1)+ ':' + myhash)
         self.front_port = new_front
         logging.debug('Front neighbor created')
 
     def update_back(self,myport,new_back_port):
         if self.back_port != myport:
-            self.back.close_connection()
+            self.back.communication('quit')
             
         self.back_port = new_back_port
         if myport!=new_back_port:
@@ -45,7 +47,7 @@ class Neighbors(object):
         
     def update_front(self,myport,new_front_port):
         if self.front_port != myport:
-            self.front.close_connection()
+            self.front.communication('quit')
             
         self.front_port = new_front_port
         if myport!=new_front_port:
@@ -53,10 +55,10 @@ class Neighbors(object):
         logging.debug('Front neighbor updated')
 
     def send_back(self,data):
-        return self.back.make_query(data)
+        return self.back.communication(data)
 
     def send_front(self,data):
-        return self.front.make_query(data)
+        return self.front.communication(data)
 
     def get_front(self):
         return self.front_port
@@ -68,30 +70,30 @@ class Neighbors(object):
 
 def find_neighbors(hash_value,PORT):
     y = Client(PORT)
-    x = y.make_query('join:' + hash_value).split()
+    x = y.communication('join:' + hash_value).split()
     x[0] = int(x[0])
     x[2] = int(x[2])
-    y.close_connection()
+    y.communication('quit')
     logging.debug('Neighbors found: '+str(x[0]) + ' ' +str(x[2]))
     
     return x
                                 
 def send_request(PORT,message):
     x = Client(PORT)
-    x.make_query(message)
-    x.close_connection()
+    x.communication(message)
+    x.communication('quit')
     
 def send_request2(PORT,message):
     x = Client(PORT)
     x.send_info(message)
-    x.close_connection()
+    x.communication('quit')
     
 def close_server(port):
     cl = Client(port)
     logging.debug('Shut Client ON')
-    cl.close_and_shut()
+    cl.communication('Shut down')
     sys.exit()
-
+    
 def DHT_close(self,size,port):
     x = size
     for i in xrange(x-1):

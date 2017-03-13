@@ -2,6 +2,8 @@
 
 import socket
 import logging
+import sys
+
 logging.basicConfig(filename='debug.log',level=logging.DEBUG)
 
 class Client(object):
@@ -13,37 +15,39 @@ class Client(object):
             self.client_socket.connect(('localhost', PORT))
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.close_connection()
+        self.communication('quit')
         return False
 
     def __enter__(self):
         return self
-
-    def make_query(self, question):
-        self.client_socket.send(question)
-        return self.client_socket.recv(1024)
-
+    
     def send_info(self,info):
         self.client_socket.send(info)
-        
-    def close_connection(self):
-        try:
-            self.client_socket.send('quit')
-            
-        except socket.error:
-            print 'socket error'
-        else:
-            self.client_socket.recv(1024)
-            
-            self.client_socket.close()
-
-    def close_and_shut(self):
-        self.client_socket.send('Shut down')
-        
-        self.client_socket.recv(1024)
-        
-        self.client_socket.close()
 
     def get_socket(self):
         return self.client_socket
 
+    def _close(self):
+        try:
+            self.client_socket.close()
+        except socket.error:
+            logging.error('client: CLOSURE WAS UNSUCCESSFUL')
+            sys.exit()
+        
+    def communication(self,message):
+        try:
+            self.client_socket.send(message)
+        except socket.error:
+            logging.error('client: SEND MESSAGE FAIL')
+            sys.exit()
+            
+        try:
+            answer = self.client_socket.recv(1024)
+        except socket.error:
+            logging.error('client: READ MESSAGE FAIL')
+            sys.exit()
+        if answer.startswith('12345'):
+            self._close()
+        else:
+            return answer
+            

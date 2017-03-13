@@ -86,7 +86,7 @@ def insert(command):
     host = random.sample(ports, 1)[0]
     port = ports[host]
     with Client(port) as cli:
-        cli.make_query('{}:-1:-1:{}:{}'.format(*command))
+        cli.communication('{}:-1:-1:{}:{}'.format(*command))
 
 
 def query(command):
@@ -97,7 +97,7 @@ def query(command):
 def DHT_print(command):
     """Requests the DHT topology from the master server"""
     with Client(ports['1']) as cli:
-        print cli.make_query(command[0])
+        print cli.communication(command[0])
 
 
 def print_help(command):
