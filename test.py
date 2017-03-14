@@ -46,7 +46,7 @@ def main():
         if command[0] == 'exit':
             break
         time.sleep(1)
-    for proc in processes.values:
+    for host, proc in processes.iteritems():
         proc.join()
     logging.debug('END')
 

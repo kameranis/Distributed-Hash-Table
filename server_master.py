@@ -9,7 +9,7 @@ import threading
 import logging
 
 from server import Server
-from neighbors import Neighbors, send_request, close_server, send_request2
+from neighbors import Neighbors, send_request, close_server, send_request2, DHT_close
 from hashlib import sha1
 from binascii import hexlify
 
@@ -48,24 +48,26 @@ class Server_master(Server):
             t.start()
             t.join()
         logging.debug('Next updated')
-        threading.Thread(target=close_server, args = (int(x[5]),)).start()
+        t = threading.Thread(target=close_server, args = (int(x[5]),))
+        t.start()
         self.message_queues[sock].put('Your job is completed')
         self._network_size -= 1
         logging.debug('Depart ends')
         
         if self.close and (int(x[3]) == self.PORT) and (int(x[1]) == self.PORT):
-            time.sleep(1)
+            t.join()
             self.s.close()
             self.neighbors.destroy(self.PORT)
             logging.debug('Shutdown complete')
-            return
+            sys.exit()
         elif self.close and (int(x[3]) != self.PORT) and (int(x[1]) == self.PORT):
+            #t.join()
             logging.debug('Shutting down, closing {}'.format(self.N_hash))
             threading.Thread(target=send_request, args=(self.neighbors.front_port, 'depart')).start()
         
     def _bye(self,data,sock):
         self.close = True
-        #threading.Thread(target=self.DHT_close, args=(self._network_size,)).start()
+        #threading.Thread(target=DHT_close, args=(self._network_size,self.neighbors.front_port,)).start()
         threading.Thread(target=send_request, args=(self.neighbors.front_port, 'depart',)).start()
 
     def _print(self,data,sock):

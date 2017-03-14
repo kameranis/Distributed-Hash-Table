@@ -16,10 +16,18 @@ logging.basicConfig(filename='debug.log',level=logging.ERROR)
 class Server(object):
     def __init__(self, HOST, master):
         # Every new implemented method must be added to the dictionary with 'key' a unique identifier like below 
-        self.operations = {'next': self._update_my_front, 'prev': self._update_my_back, 'join': self._join, 'depart': self._depart, 'insert':self._insert, 'print': self._print, 'None': self._reply}
+        self.operations = {'next': self._update_my_front,
+                           'prev': self._update_my_back,
+                           'join': self._join,
+                           'depart': self._depart,
+                           'insert':self._insert,
+                           'print': self._print,
+                           'None': self._reply}
         # If we only want just to reply, we add to this dict as key:value -> read_message:reply_message
-        self.replies = {'You are ready to depart': 'I am ready to depart', 'Shut down': '123456', 'quit': '12345'}
-
+        self.replies = {'You are ready to depart': 'I am ready to depart',
+                        'Shut down': '123456',
+                        'quit': '12345'}
+        self.close = False 
         self.HOST = HOST
         self.myhash = sha1(HOST).hexdigest()
         self.N_hash = self.myhash
@@ -123,14 +131,13 @@ class Server(object):
         self.message_queues[sock].put(self.replies.get(data,'Server cant support this operation'))
 
     def _quit(self,data,sock):
-        if data == '12345':
-            if sock in self.write_to_client:
-                self.write_to_client.remove(sock)
-               
-            self.connection_list.remove(sock)
-            sock.close()
-            del self.message_queues[sock]        
-            logging.debug('Quit completed')
+        if sock in self.write_to_client:
+            self.write_to_client.remove(sock)
+            
+        self.connection_list.remove(sock)
+        sock.close()
+        del self.message_queues[sock]        
+        logging.debug('Quit completed')
         
     def _shut(self,data,sock):
         if data.startswith('123456'):
@@ -140,14 +147,11 @@ class Server(object):
         
     
     def _total_shut(self,next_msg,sock):
-        self._quit(next_msg,sock)
+        if next_msg.startswith('12345'):
+            self._quit(next_msg,sock)
         self._shut(next_msg,sock)
-        # if next_msg.startswith('123456'):
-        #self.neighbors.destroy(self.PORT)
-        #self.s.close()
-        #    sys.exit()
-    
-    
+
+
     def accept_connection(self):
         while True:
             read_sockets, write_sockets, error_sockets = select.select(self.connection_list, self.write_to_client,
@@ -180,11 +184,7 @@ class Server(object):
             for sock in error_sockets:
                 print >> sys.stderr, 'handling exceptional condition for', sock.getpeername()
                 # Stop listening for input on the connection
-                self.connection_list.remove(sock)
-                if sock in self.write_to_client:
-                    self.write_to_client.remove(sock)
-                sock.close()
-                del self.message_queues[sock]
+                self._quit('',sock)
         self.s.close()
 
     def get_port(self):

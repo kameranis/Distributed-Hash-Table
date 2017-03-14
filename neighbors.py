@@ -94,11 +94,11 @@ def close_server(port):
     cl.communication('Shut down')
     sys.exit()
     
-def DHT_close(self,size,port):
+def DHT_close(size,port):
     x = size
     for i in xrange(x-1):
         logging.debug('NEXT PREPARE TO GET DESTROYED')
-        send_request2(port, 'depart')
+        send_request(port, 'depart')
         time.sleep(1)
         logging.debug('MY NEXT IS DEAD NOW BUAHAHA')
     #self.s.close()
