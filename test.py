@@ -28,7 +28,7 @@ main_port = None
 
 def main():
     """Main script
-
+    
     Acts as a terminal towards the DHT"""
     global main_port
     processes['1'] = Process(target=create_DHT, args=())
@@ -38,6 +38,10 @@ def main():
     logging.debug('Server 1 started...')
     time.sleep(1)
     print_help('')
+    for i in range(2,10):
+        join(('join, '+str(i)).split(', '))
+        time.sleep(1)
+    DHT_print(['print'])
     while True:
         command = raw_input('Action: ').split(', ')
         fun = command_dict.get(command[0], bad_command)
@@ -69,7 +73,7 @@ def join(command):
 def depart(command):
     """Commands the server to shut down"""
     with Client(ports[command[1]]) as cli:
-        cli.send_info(command[0])
+        cli.communication(command[0])
     processes[command[1]].join()
     del processes[command[1]]
     del ports[command[1]]
@@ -78,7 +82,7 @@ def depart(command):
 def DHT_destroy(command):
     """Forces the whole DHT to shutdown"""
     with Client(ports['1']) as cli:
-        cli.send_info('bye')
+        cli.communication('bye')
 
 
 def insert(command):
@@ -86,7 +90,7 @@ def insert(command):
     host = random.sample(ports, 1)[0]
     port = ports[host]
     with Client(port) as cli:
-        cli.communication('{}:-1:-1:{}:{}'.format(*command))
+        cli.communication('{}:{}:{}'.format(*command))
 
 
 def query(command):
@@ -95,6 +99,8 @@ def query(command):
     port = ports[host]
     with Client(port) as cli:
         print cli.communication('{}:-1:-1:{}'.format(*command))
+
+                         
 
 
 def DHT_print(command):

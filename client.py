@@ -15,7 +15,7 @@ class Client(object):
             self.client_socket.connect(('localhost', PORT))
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.communication('quit')
+        #self.communication('quit')
         return False
 
     def __enter__(self):
@@ -44,10 +44,11 @@ class Client(object):
         try:
             answer = self.client_socket.recv(1024)
         except socket.error:
-            logging.error('client: READ MESSAGE FAIL')
+            logging.error('client: READ MESSAGE FAIL '+ str(self.PORT))
             sys.exit()
-        if answer.startswith('12345'):
-            self._close()
         else:
+            self._close()
             return answer
-            
+
+
+
