@@ -91,7 +91,10 @@ def insert(command):
 
 def query(command):
     """Queries a random server for the value of a key"""
-    raise NotImplementedError
+    host = random.sample(ports, 1)[0]
+    port = ports[host]
+    with Client(port) as cli:
+        print cli.communication('{}:-1:-1:{}'.format(*command))
 
 
 def DHT_print(command):
