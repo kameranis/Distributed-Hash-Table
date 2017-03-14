@@ -72,10 +72,10 @@ class Server_master(Server):
 
     def _print(self,data,sock):
         if self._network_size > 1:
-            message = self.HOST+'->'+ self.neighbors.send_front('print:'+str(self._network_size-1))
+            message = self.HOST+str([value for key, value in self.data.iteritems()])+'->'+ self.neighbors.send_front('print:'+str(self._network_size-1))
             self.message_queues[sock].put(message)
         else:
-            self.message_queues[sock].put(self.HOST)
+            self.message_queues[sock].put(self.HOST+str([value for key, value in self.data.iteritems()]))
 
     def _total_shut(self,next_msg,sock):
         self._quit(next_msg,sock)

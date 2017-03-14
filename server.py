@@ -122,10 +122,10 @@ class Server(object):
     def _print(self,data,sock):
         x = data.split(':')
         if int(x[1])>1:
-            message = self.HOST+'->'+self.neighbors.send_front('print:'+str(int(x[1])-1))
+            message = self.HOST+ str([value for key, value in self.data.iteritems()]) + '->'+self.neighbors.send_front('print:'+str(int(x[1])-1))
             self.message_queues[sock].put(message)
         else:
-            self.message_queues[sock].put(self.HOST)
+            self.message_queues[sock].put(self.HOST+ str([value for key, value in self.data.iteritems()]))
 
     def _reply(self,data,sock):
         self.message_queues[sock].put(self.replies.get(data,'Server cant support this operation'))
