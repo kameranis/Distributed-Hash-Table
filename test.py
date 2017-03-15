@@ -40,7 +40,7 @@ def main():
     print_help('')
     for i in range(2,10):
         join(('join, '+str(i)).split(', '))
-        time.sleep(1)
+        # time.sleep(1)
     
     insert('insert:Imagine:2'.split(':'))
     time.sleep(1)
@@ -93,11 +93,19 @@ def DHT_destroy(command):
 
 
 def insert(command):
-    """Sends a requests to a random server to insert a (key, value) pair"""
+    """Sends a request to a random server to insert a (key, value) pair"""
     host = random.sample(ports, 1)[0]
     port = ports[host]
     with Client(port) as cli:
         cli.communication('{}:{}:{}'.format(*command))
+
+
+def delete(command):
+    """Sends a request to a random server to delete the key"""
+    host = random.sample(ports, 1)[0]
+    port = ports[host]
+    with Client(port) as cli:
+        cli.communication('{}:{}'.format(*command))
 
 
 def query(command):
@@ -150,6 +158,7 @@ command_dict = {'join': join,
                 'depart': depart,
                 'exit': DHT_destroy,
                 'insert': insert,
+                'delete': delete,
                 'query': query,
                 'print': DHT_print}
 

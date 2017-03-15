@@ -25,6 +25,8 @@ class Server(object):
                            'depart': self._depart,
                            'insert': self._insert,
                            'add': self._add_data,
+                           'delete': self._delete,
+                           'remove': self._remove,
                            'query': self._query,
                            'print_all_data': self._print_all_data,
                            'print_my_data': self._print_my_data,
@@ -173,6 +175,31 @@ class Server(object):
         else:
             self.neighbors.send_front(data)
         self.message_queues[sock].put('Done')
+
+    def _delete(self, data, sock):
+        x = data.split(':')
+        key = sha1(x[1]).hexdigest()
+        logging.debug('Host: {}, delete: {}'.format(self.HOST, x[1]))
+        if self.belongs_here(key):
+            self.data_lock.acquire()
+            answer = self.data.pop(key, (None, None))
+            self.data_lock.release()
+            if answer[0] is not None:
+                self.neighbors.send_front('remove:{}'.format(x[1]))
+            self.message_queues[sock].put('{}:{}'.format(*answer))
+        else:
+            self.neighbors.send_front(data)
+
+    def _remove(self, data, sock):
+        x = data.split(':')
+        key = sha1(x[1]).hexdigest()
+        self.data_lock.acquire()
+        answer = self.data.pop(key, (None, None))
+        self.data_lock.release()
+        if answer[0] is not None:
+            self.neighbors.send_front('remove:{}'.format(x[1]))
+        self.message_queues[sock].put('{}:{}'.format(*answer))
+
 
     def _query(self, data, sock):
         """Searches for a key                                                                                                                                             
