@@ -165,14 +165,17 @@ class Server(object):
         x = data.split(':')
         key = sha1(x[1]).hexdigest()
         logging.debug('Host: {}, insert: {}'.format(self.HOST, x[1]))
-        if self.belongs_here(key):
+        self.data_lock.acquire()
+        if self.data.get(key, (None, None))[1] == x[2]:
+            self.data_lock.release()
+        elif self.belongs_here(key):
             x.append(str(self.replication - 1))
             x.append(self.myhash)
-            self.data_lock.acquire()
             self.data[key] = (x[1], x[2])
             self.data_lock.release()
             threading.Thread(target=send_request, args=(self.neighbors.front_port, 'add:' + ':'.join(x[-4:], ))).start()
         else:
+            self.data_lock.release()
             self.neighbors.send_front(data)
         self.message_queues[sock].put('Done')
 
