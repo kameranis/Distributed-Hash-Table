@@ -97,9 +97,13 @@ def query(command):
     """Queries a random server for the value of a key"""
     host = random.sample(ports, 1)[0]
     port = ports[host]
-    with Client(port) as cli:
-        print cli.communication('{}:-1:-1:{}'.format(*command))
-
+    if command[1] == '*':
+        with Client(port) as cli:
+            print cli.communication('print_all_data')
+    else:
+        with Client(port) as cli:
+            print cli.communication('{}:-1:-1:{}'.format(*command))
+                                               
 
 def DHT_print(command):
     """Requests the DHT topology from the master server"""

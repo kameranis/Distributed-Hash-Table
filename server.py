@@ -26,6 +26,8 @@ class Server(object):
                            'insert': self._insert,
                            'add': self._add_data,
                            'query': self._query,
+                           'print_all_data': self._print_all_data,
+                           'print_my_data': self._print_my_data,
                            'bye': self._bye,
                            'print': self._print}
         # If we only want just to reply, we add to this dict as key:value -> read_message:reply_message
@@ -166,6 +168,24 @@ class Server(object):
             logging.debug('Passing forward query:{}:{}'.format(song, value))
             answer = self.neighbors.send_front(':'.join(x))
             self.message_queues[sock].put(answer)
+
+    def _print_my_data(self,data,sock):
+        self.data_lock.acquire()
+        print [value for key, value in self.data.iteritems()]
+        self.data_lock.release()
+        self.message_queues[sock].put(str(self.neighbors.front_port))
+        
+    def _print_all_data(self,data,sock):
+        
+        self.data_lock.acquire()
+        print [value for key, value in self.data.iteritems()]
+        self.data_lock.release()
+        x = self.neighbors.front_port
+        while x != self.PORT:
+            x = int(send_request(x, 'print_my_data'))
+            
+        self.message_queues[sock].put('Done')
+        
 
     def _print(self, data, sock):
         x = data.split(':')

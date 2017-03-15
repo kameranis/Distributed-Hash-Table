@@ -60,4 +60,4 @@ def find_neighbors(hash_value,PORT):
     return x
                                 
 def send_request(PORT,message):
-    Client(PORT).communication(message)
+    return Client(PORT).communication(message)
