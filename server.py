@@ -28,6 +28,7 @@ class Server(object):
                            'query': self._query,
                            'print_all_data': self._print_all_data,
                            'print_my_data': self._print_my_data,
+                           'retrieve': self._retrieve,
                            'bye': self._bye,
                            'print': self._print}
         # If we only want just to reply, we add to this dict as key:value -> read_message:reply_message
@@ -68,7 +69,32 @@ class Server(object):
         self.replication = x[4]
         self.neighbors.create_back(x[1], x[0], self.PORT, self.myhash)
         self.neighbors.create_front(x[3], x[2], self.PORT, self.myhash)
-
+        threading.Thread(target = send_request, args = (self.neighbors.front_port, 'retrieve:*')).start()
+        
+    def _retrieve(self,data,sock):
+        data = data.split(':')
+        if data[1] == '*':
+            res = []
+            self.data_lock.acquire()
+            for key, value in self.data.iteritems():
+                if self.belongs_here(key) == False:
+                    threading.Thread(target = send_request, args = (self.neighbors.back_port, 'add:{}:{}:1:{}'.format(value[0], value[1], self.myhash) )).start()
+                    if self.neighbors.send_front('retrieve:' + key) == 'None:None':
+                        res.append(key)
+            for key in res:
+                del self.data[key]
+            self.data_lock.release()
+        else:
+            key = data[1]
+            self.data_lock.acquire()
+            x = self.data.get(key,(None,None))
+            if x[0] is not None:
+                if self.neighbors.send_front('retrieve:' + key) == 'None:None':
+                    del self.data[key]
+                
+            self.data_lock.release() 
+            self.message_queues[sock].put('{}:{}'.format(*x))
+            
     def _update_my_front(self, data, sock):
         # data = next:Next_port:Next_hash
         data = data.split(':')
@@ -171,14 +197,14 @@ class Server(object):
 
     def _print_my_data(self,data,sock):
         self.data_lock.acquire()
-        print [value for key, value in self.data.iteritems()]
+        print self.HOST, [value for key, value in self.data.iteritems()]
         self.data_lock.release()
         self.message_queues[sock].put(str(self.neighbors.front_port))
         
     def _print_all_data(self,data,sock):
         
         self.data_lock.acquire()
-        print [value for key, value in self.data.iteritems()]
+        print self.HOST, [value for key, value in self.data.iteritems()]
         self.data_lock.release()
         x = self.neighbors.front_port
         while x != self.PORT:
@@ -248,7 +274,7 @@ class Server(object):
 
             if self.close:
                 # self.thread_queue.join()
-                # time.sleep(1)
+                time.sleep(1)
                 logging.debug('return')
                 return
 

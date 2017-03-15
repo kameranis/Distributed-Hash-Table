@@ -41,6 +41,13 @@ def main():
     for i in range(2,10):
         join(('join, '+str(i)).split(', '))
         time.sleep(1)
+    
+    insert('insert:Imagine:2'.split(':'))
+    time.sleep(1)
+    insert('insert:Ameranhs:3'.split(':'))
+    time.sleep(1)
+    insert('insert:Valkanos:4'.split(':'))
+    time.sleep(1)
     DHT_print(['print'])
     while True:
         command = raw_input('Action: ').split(', ')
