@@ -31,7 +31,7 @@ def main():
     
     Acts as a terminal towards the DHT"""
     global main_port
-    processes['1'] = Process(target=create_DHT, args=())
+    processes['1'] = Process(target=create_DHT, args=(int(sys.argv[1]),))
     processes['1'].start()
     host, main_port = queue.get()
     ports[host] = main_port
@@ -100,8 +100,6 @@ def query(command):
     with Client(port) as cli:
         print cli.communication('{}:-1:-1:{}'.format(*command))
 
-                         
-
 
 def DHT_print(command):
     """Requests the DHT topology from the master server"""
@@ -118,9 +116,9 @@ def print_help(command):
     print "+--------------------------------------+"
 
 
-def create_DHT():
+def create_DHT(repl):
     """Creates the master server of the DHT"""
-    k = Server_master('1')
+    k = Server_master('1', repl)
     queue.put(('1', k.get_port()))
     k.accept_connection()
     sys.exit()

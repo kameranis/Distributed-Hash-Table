@@ -54,9 +54,9 @@ def measure_throughput(filename):
                 elif len(line.split(', ')) == 1:
                     cli.make_query('query:{}'.format(line))
                 elif line.startswith('insert'):
-                    cli.make_query('insert:{}:{}'.format(*line.split(', ')[1:]))
+                    cli.make_query('insert:-1:-1:{}:{}'.format(*line.split(', ')[1:]))
                 elif len(line.split(', ')) == 2:
-                    cli.make_query('insert:{}:{}'.format(*line.split(', ')))
+                    cli.make_query('insert:-1:-1:{}:{}'.format(*line.split(', ')))
                 else:
                     raise ValueError('Bad Request')
             request_count += 1
