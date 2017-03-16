@@ -170,7 +170,7 @@ class Server(object):
         else:
             key_hash = sha1(key).hexdigest()
             self.data_lock.acquire()
-            # Aleady have it
+            # Don't have it
             if self.data.get(key_hash, None) != (key, value):
                 self.data[key_hash] = (key, value)
                 copies = str(int(copies) - 1)
@@ -195,8 +195,8 @@ class Server(object):
         elif self.belongs_here(key_hash):
             self.data[key_hash] = (key, value)
             self.data_lock.release()
-            self.message_queues[sock].put(
-                self.neighbors.send_front('add:{}:{}:{}:{}'.format(key, value, self.replication - 1, self.hash)))
+            self.message_queues[sock].put(value)
+            self.neighbors.send_front('add:{}:{}:{}:{}'.format(key, value, self.replication - 1, self.hash))
         else:
             self.data_lock.release()
             self.message_queues[sock].put(self.neighbors.send_front(data))
@@ -212,9 +212,9 @@ class Server(object):
             self.data_lock.acquire()
             answer = self.data.pop(key_hash, (None, None))
             self.data_lock.release()
+            self.message_queues[sock].put('{}:{}'.format(*answer))
             if answer[0] is not None:
                 self.neighbors.send_front('remove:{}'.format(key))
-            self.message_queues[sock].put('{}:{}'.format(*answer))
         else:
             self.neighbors.send_front(data)
             self.message_queues[sock].put('Done')
@@ -239,31 +239,15 @@ class Server(object):
         self.data_lock.acquire()
         value = self.data.get(key, None)
         self.data_lock.release()
-        # Message has passed through the server it belongs
-        if copies != '-1':
-            # Last replica
-            if int(copies) > 1:
-                logging.debug('Passing forward query:{}:{}'.format(song, value))
-                copies = str(int(copies) - 1)
-                self.message_queues[sock].put(self.neighbors.send_front('query:{}:{}:{}'.format(copies, host, song)))
-            # Not last replica, move forward
-            else:
-                logging.debug('Last copy query:{}:{}'.format(song, value))
-                self.message_queues[sock].put('{}:{}'.format(song, value))
-        elif self.belongs_here(key):
+        if self.belongs_here(key):
             logging.debug('Belongs query:{}:{}'.format(song, value))
-            if self.replication > 1:
-                logging.debug('Passing forward query:{}:{}'.format(song, value))
-                copies = str(self.replication - 1)
-                self.message_queues[sock].put(self.neighbors.send_front('query:{}:{}:{}'.format(copies, host, song)))
-            # Only replica
-            else:
-                logging.debug('Only copy query:{}:{}'.format(song, value))
-                self.message_queues[sock].put('{}:{}'.format(song, value))
+            self.message_queues[sock].put('{}:{}'.format(song, value))
+        elif value is not None:
+            logging.debug('Found query:{}:{}'.format(song, value))
+            self.message_queues[sock].put('{}:{}'.format(song, value))
         else:
             logging.debug('Passing forward query:{}:{}'.format(song, value))
-            answer = self.neighbors.send_front('query:{}:{}:{}'.format(copies, host, song))
-            self.message_queues[sock].put(answer)
+            self.message_queues[sock].put(self.neighbors.send_front('query:{}:{}:{}'.format(copies, host, song)))
 
     def _print_my_data(self, data, sock):
         """Prints my data and forwards the message
