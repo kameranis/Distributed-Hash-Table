@@ -53,7 +53,6 @@ class Neighbors(object):
     def get_back(self):
         return str(self.back_port) + ':' + self.back_hash
 
-''' Some usefull functions '''
 
 def find_neighbors(hash_value,PORT):
     with Client(PORT) as cli:

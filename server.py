@@ -49,7 +49,6 @@ class Server(object):
         self.s.listen(10)
         self.neighbors = Neighbors(self.myhash, self.PORT, self.myhash, self.PORT)
 
-        self.connection_list = [self.s]
         self.message_queues = {}  # servers' reply messages
 
 
@@ -58,15 +57,14 @@ class Server(object):
 
     
     def DHT_join(self):
-        # x[0] = Prev_Port, x[1] = Prev_hash, x[2] = Next_port, x[3] = Next_hash, x[4] = replication
-        [x0, x1, x2, x3, self.replication] = find_neighbors(self.myhash, self.m_PORT)
-        self.neighbors.create_back(x1, x0, self.PORT, self.myhash)
-        self.neighbors.create_front(x3, x2, self.PORT, self.myhash)
+        Back_Port, Back_Hash, Front_Port, Front_Hash, self.replication = find_neighbors(self.myhash, self.m_PORT)
+        self.neighbors.create_back(Back_Hash, Back_Port, self.PORT, self.myhash)
+        self.neighbors.create_front(Front_Hash, Front_Port, self.PORT, self.myhash)
         self.neighbors.send_front('retrieve:*')
         
         
     def _retrieve(self,data,sock):
-        data = data.split(':')
+        _, find_key = data.split(':')
         if data[1] == '*':
             res = []
             self.data_lock.acquire()
@@ -80,26 +78,23 @@ class Server(object):
             self.message_queues[sock].put('Done')
             self.data_lock.release()
         else:
-            key = data[1]
             self.data_lock.acquire()
-            x = self.data.get(key,(None,None))
+            x = self.data.get(find_key,(None,None))
             if x[0] is not None:
-                if self.neighbors.send_front('retrieve:' + key) == 'None:None':
-                    del self.data[key]
+                if self.neighbors.send_front('retrieve:' + find_key) == 'None:None':
+                    del self.data[find_key]
                 
             self.data_lock.release() 
             self.message_queues[sock].put('{}:{}'.format(*x))
             
     def _update_my_front(self, data, sock):
-        # data = next:Next_port:Next_hash
-        data = data.split(':')
-        self.neighbors.update_front(data[2], int(data[1]))
+        _, Front_Port, Front_Hash = data.split(':')
+        self.neighbors.update_front(Front_Hash, int(Front_Port))
         self.message_queues[sock].put(self.HOST + ': Connection granted...')
 
     def _update_my_back(self, data, sock):
-        # data = prev:Prev_port:Prev_hash
-        data = data.split(':')
-        self.neighbors.update_back(data[2], int(data[1]))
+        _, Back_Port, Back_Hash = data.split(':')
+        self.neighbors.update_back(Back_Hash, int(Back_Port))
         self.message_queues[sock].put(self.HOST + ': Connection granted...')
 
     def belongs_here(self, key):
@@ -108,9 +103,8 @@ class Server(object):
                (self.myhash <= self.neighbors.back_hash <= key)
 
     def _join(self, data, sock):
-        # data = join:key_hash
-        x = data.split(':')
-        if self.belongs_here(x[1]):
+        _, key_hash = data.split(':')
+        if self.belongs_here(key_hash):
             message = self.neighbors.get_back() + ':' + str(self.PORT) + ':' + self.myhash
             logging.debug('Join complete')
         else:
@@ -122,7 +116,7 @@ class Server(object):
             self.send_data_forward()
         self.neighbors.send_back('next:{}:{}'.format(self.neighbors.front_port, self.neighbors.front_hash))
         self.neighbors.send_front('prev:{}:{}'.format(self.neighbors.back_port, self.neighbors.back_hash))
-        send_request(self.m_PORT, 'depart:{}'.format(self.PORT))
+        send_request(self.m_PORT,'depart')
         self.close = True
         self.message_queues[sock].put('Done...Bye Bye')
         logging.debug('DEPART COMPLETED')
@@ -140,69 +134,60 @@ class Server(object):
         t.start()
 
     def _add_data(self, data, sock):
-        # data = add:key:value:copies:host
-        x = data.split(':')
-        logging.debug('Host: {}, add: {}'.format(self.HOST, x[2]))
-        if (x[3] == '0') or (x[4] == self.myhash):
-            self.message_queues[sock].put(x[2])
+        _, key, value, copies, host = data.split(':')
+        logging.debug('Host: {}, add: {}'.format(self.HOST, value))
+        if (copies == '0') or (host == self.myhash):
+            self.message_queues[sock].put(value)
         else:
-            key = sha1(x[1]).hexdigest()
+            key_hash = sha1(key).hexdigest()
             self.data_lock.acquire()
-            if self.data.get(key, None) != (x[1], x[2]):
-                self.data[key] = (x[1], x[2])
-                x[3] = str(int(x[3]) - 1)
+            if self.data.get(key_hash, None) != (key, value):
+                self.data[key_hash] = (key, value)
+                copies = str(int(copies) - 1)
             self.data_lock.release()
-	    if x[3] == '0':
-	    	self.message_queues[sock].put(x[2])
+	    if copies == '0':
+	    	self.message_queues[sock].put(value)
 	    else:
-		self.message_queues[sock].put(self.neighbors.send_front(':'.join(x)))
+		self.message_queues[sock].put(self.neighbors.send_front('add:{}:{}:{}:{}'.format(key, value, copies, host)))
 
     def _insert(self, data, sock):
-        # data = insert:key:value
-        x = data.split(':')
-        key = sha1(x[1]).hexdigest()
-        logging.debug('Host: {}, insert: {}'.format(self.HOST, x[1]))
+        _, key, value = data.split(':')
+        key_hash = sha1(key).hexdigest()
+        logging.debug('Host: {}, insert: {}'.format(self.HOST, key))
         self.data_lock.acquire()
-        if self.data.get(key, (None, None))[1] == x[2]:
+        if self.data.get(key_hash, (None, None))[1] == value:
             self.data_lock.release()
-        elif self.belongs_here(key):
-            x.append(str(self.replication - 1))
-            x.append(self.myhash)
-            self.data[key] = (x[1], x[2])
+        elif self.belongs_here(key_hash):
+            self.data[key_hash] = (key, value)
             self.data_lock.release()
-            #self.thread_list.append(threading.Thread(target=send_request, args=(self.neighbors.front_port, 'add:' + ':'.join(x[-4:], ))))
-            #self.thread_list[-1].start()
-	    #self.thread_list[-1].join()
-	    self.message_queues[sock].put(self.neighbors.send_front('add:' + ':'.join(x[-4:])))
+	    self.message_queues[sock].put(self.neighbors.send_front('add:{}:{}:{}:{}'.format(key, value, self.replication-1, self.myhash)))
         else:
             self.data_lock.release()
-            #self.thread_list.append(threading.Thread(target=send_request, args=(self.neighbors.front_port, data,)))
-	    #self.thread_list[-1].start()
             self.message_queues[sock].put(self.neighbors.send_front(data))
 
     def _delete(self, data, sock):
-        x = data.split(':')
-        key = sha1(x[1]).hexdigest()
-        logging.debug('Host: {}, delete: {}'.format(self.HOST, x[1]))
-        if self.belongs_here(key):
+        _, key = data.split(':')
+        key_hash = sha1(key).hexdigest()
+        logging.debug('Host: {}, delete: {}'.format(self.HOST, key))
+        if self.belongs_here(key_hash):
             self.data_lock.acquire()
-            answer = self.data.pop(key, (None, None))
+            answer = self.data.pop(key_hash, (None, None))
             self.data_lock.release()
             if answer[0] is not None:
-                self.neighbors.send_front('remove:{}'.format(x[1]))
+                self.neighbors.send_front('remove:{}'.format(key))
             self.message_queues[sock].put('{}:{}'.format(*answer))
         else:
             self.neighbors.send_front(data)
             self.message_queues[sock].put('Done')
             
     def _remove(self, data, sock):
-        x = data.split(':')
-        key = sha1(x[1]).hexdigest()
+        _, key = data.split(':')
+        key_hash = sha1(key).hexdigest()
         self.data_lock.acquire()
-        answer = self.data.pop(key, (None, None))
+        answer = self.data.pop(key_hash, (None, None))
         self.data_lock.release()
         if answer[0] is not None:
-            self.neighbors.send_front('remove:{}'.format(x[1]))
+            self.neighbors.send_front('remove:{}'.format(key))
         self.message_queues[sock].put('{}:{}'.format(*answer))
 
 
@@ -239,23 +224,24 @@ class Server(object):
             self.message_queues[sock].put(answer)
 
     def _print_my_data(self,data,sock):
-        self.data_lock.acquire()
-        print self.HOST, [value for key, value in self.data.iteritems()]
-        self.data_lock.release()
-        self.message_queues[sock].put(str(self.neighbors.front_port))
-        
-    def _print_all_data(self,data,sock):
-        
-        self.data_lock.acquire()
-        print self.HOST, [value for key, value in self.data.iteritems()]
-        self.data_lock.release()
-        x = self.neighbors.front_port
-        while x != self.PORT:
-            x = int(send_request(x, 'print_my_data'))
-            
-        self.message_queues[sock].put('Done')
-        
+        x = data.split(':')
+        if x[1] != self.myhash:
+            self.data_lock.acquire()
+            print self.HOST, [value for key, value in self.data.iteritems()]
+            self.data_lock.release()
+            self.message_queues[sock].put(self.neighbors.send_front(data))
+        else:
+            self.message_queues[sock].put('Done')
 
+    def _print_all_data(self,data,sock):
+        self.data_lock.acquire()
+        print self.HOST, [value for key, value in self.data.iteritems()]
+        self.data_lock.release()
+        if self.neighbors.front_hash != self.myhash:
+            self.message_queues[sock].put(self.neighbors.send_front('print_my_data:'+self.myhash))
+        else:
+            self.message_queues[sock].put('Done')
+        
     def _quit(self, data, sock):
         self.message_queues[sock].put('CLOSE MAN')
 

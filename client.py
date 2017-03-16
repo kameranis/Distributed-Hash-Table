@@ -22,12 +22,6 @@ class Client(object):
     def __enter__(self):
         return self
 
-    def send_info(self,info):
-        self.client_socket.send(info)
-
-    def get_socket(self):
-        return self.client_socket
-
     def close(self):
         try:
             self.client_socket.send('quit')
@@ -45,7 +39,7 @@ class Client(object):
         except socket.error:
             logging.error('client: SEND MESSAGE FAIL')
             sys.exit()
-            
+          
         try:
             self.answer = self.client_socket.recv(1024)
         except socket.error:
