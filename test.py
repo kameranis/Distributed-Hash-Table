@@ -17,9 +17,8 @@ help_dict = {'join': 'join, ID',
              'DHT destroy': 'exit',
              'Insert': 'insert, key, value',
              'Query': 'query, key',
-             'Help': 'help',
-             'print DHT': 'print'}
-
+             'Help': 'help'}
+             
 processes = {}
 ports = {}
 queue = Queue()
@@ -43,12 +42,10 @@ def main():
         # time.sleep(1)
     
     insert('insert:Imagine:2'.split(':'))
-    time.sleep(1)
     insert('insert:Ameranhs:3'.split(':'))
-    time.sleep(1)
     insert('insert:Valkanos:4'.split(':'))
-    time.sleep(1)
-    DHT_print(['print'])
+    query(['query','*'])
+    
     while True:
         command = raw_input('Action: ').split(', ')
         fun = command_dict.get(command[0], bad_command)
@@ -120,12 +117,6 @@ def query(command):
             print cli.communication('{}:-1:-1:{}'.format(*command))
                                                
 
-def DHT_print(command):
-    """Requests the DHT topology from the master server"""
-    with Client(ports['1']) as cli:
-        print cli.communication(command[0])
-
-
 def print_help(command):
     """Prints a helping message to the user"""
     print "+--------------------------------------+"
@@ -159,8 +150,7 @@ command_dict = {'join': join,
                 'exit': DHT_destroy,
                 'insert': insert,
                 'delete': delete,
-                'query': query,
-                'print': DHT_print}
+                'query': query}
 
 
 if __name__ == '__main__':

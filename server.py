@@ -10,7 +10,6 @@ import time
 
 from neighbors import Neighbors, find_neighbors, send_request
 from hashlib import sha1
-from binascii import hexlify
 
 logging.basicConfig(filename='debug.log', level=logging.ERROR)
 
@@ -30,11 +29,7 @@ class Server(object):
                            'print_all_data': self._print_all_data,
                            'print_my_data': self._print_my_data,
                            'retrieve': self._retrieve,
-                           'bye': self._bye,
-                           'print': self._print}
-        # If we only want just to reply, we add to this dict as key:value -> read_message:reply_message
-        self.replies = {'You are ready to depart': 'I am ready to depart',
-                        'Shut down': '123456'}
+                           'bye': self._bye}
         self.close = False
         self.HOST = HOST
         self.myhash = sha1(HOST).hexdigest()
@@ -43,7 +38,6 @@ class Server(object):
         self.m_PORT = master
         self.data_lock = threading.Lock()
         self.thread_list = [] 
-        # self.thread_queue = {} Not used for now
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             self.s.bind(('', 0))
@@ -58,35 +52,27 @@ class Server(object):
         self.connection_list = [self.s]
         self.message_queues = {}  # servers' reply messages
 
-    ''' Usable functions ar below '''
 
     def __del__(self):
-        for sock in self.connection_list:
-            # sock.send('Server is closing')
-            sock.close()
         self.s.close()
 
+    
     def DHT_join(self):
-        x = find_neighbors(self.myhash, self.m_PORT)
         # x[0] = Prev_Port, x[1] = Prev_hash, x[2] = Next_port, x[3] = Next_hash, x[4] = replication
-        self.replication = x[4]
-        self.neighbors.create_back(x[1], x[0], self.PORT, self.myhash)
-        self.neighbors.create_front(x[3], x[2], self.PORT, self.myhash)
-        self.thread_list.append(threading.Thread(target = send_request, args = (self.neighbors.front_port, 'retrieve:*')))
-        self.thread_list[-1].start()
-        self.thread_list[-1].join()
+        [x0, x1, x2, x3, self.replication] = find_neighbors(self.myhash, self.m_PORT)
+        self.neighbors.create_back(x1, x0, self.PORT, self.myhash)
+        self.neighbors.create_front(x3, x2, self.PORT, self.myhash)
+        self.neighbors.send_front('retrieve:*')
         
         
     def _retrieve(self,data,sock):
         data = data.split(':')
         if data[1] == '*':
             res = []
-            #back_data = []
             self.data_lock.acquire()
             for key, value in self.data.iteritems():
                 if self.belongs_here(key) == False:
                     threading.Thread(target = send_request, args = (self.neighbors.back_port, 'add:{}:{}:1:{}'.format(value[0], value[1], self.myhash) )).start()
-                    #back_data.append('add:{}:{}:1:{}'.format(value[0], value[1], self.myhash))
                     if self.neighbors.send_front('retrieve:' + key) == 'None:None':
                         res.append(key)
             for key in res:
@@ -253,28 +239,16 @@ class Server(object):
         self.message_queues[sock].put('Done')
         
 
-    def _print(self, data, sock):
-        x = data.split(':')
-        if int(x[1]) > 1:
-            message = self.HOST + str(
-                [value for key, value in self.data.iteritems()]) + '->' + self.neighbors.send_front(
-                'print:' + str(int(x[1]) - 1))
-            self.message_queues[sock].put(message)
-        else:
-            self.message_queues[sock].put(self.HOST + str([value for key, value in self.data.iteritems()]))
-
     def _quit(self, data, sock):
         self.message_queues[sock].put('CLOSE MAN')
 
     def _reply(self, data, sock):
-        self.message_queues[sock].put(self.replies.get(data, 'Server cant support this operation'))
+        self.message_queues[sock].put('Server cant support this operation')
 
     def _connection(self):
-        # wait to accept a connection - blocking call
-                
+        #wait to accept a connection - blocking call
         try:
             conn, addr = self.s.accept()
-            #self.connection_list.append(conn)
         except socket.timeout:
             pass
         else:
@@ -295,16 +269,13 @@ class Server(object):
                 logging.error('Data recv failed')
                 break
             else:
-
                 try:
                     new_msg = self.message_queues[sock].get_nowait()
-                    
                 except Queue.Empty:
                     pass
                 else:
                     sock.send(new_msg)
                     if new_msg == 'CLOSE MAN':
-                        #self.connection_list.remove(sock)
                         del self.message_queues[sock]
                         sock.close()
                         return
@@ -313,15 +284,10 @@ class Server(object):
         
     def accept_connection(self):
         while True:
-            #read_sockets, write_sockets, error_sockets = select.select(self.connection_list, [], self.connection_list)
-            
             self._connection()            
-            
             if self.close:
                 logging.debug('CLOSEEEEEEEEEEEEEEE')
                 time.sleep(2)
-                #for t in self.thread_list:
-                 #   t.join()
                 return
                 
         self.s.close()
