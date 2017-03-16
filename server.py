@@ -144,7 +144,7 @@ class Server(object):
         x = data.split(':')
         logging.debug('Host: {}, add: {}'.format(self.HOST, x[2]))
         if (x[3] == '0') or (x[4] == self.myhash):
-            self.message_queues[sock].put(':'.join(x[-2:]))
+            self.message_queues[sock].put(x[2])
         else:
             key = sha1(x[1]).hexdigest()
             self.data_lock.acquire()
@@ -152,7 +152,10 @@ class Server(object):
                 self.data[key] = (x[1], x[2])
                 x[3] = str(int(x[3]) - 1)
             self.data_lock.release()
-            self.message_queues[sock].put(self.neighbors.send_front(':'.join(x)))
+	    if x[3] == '0':
+	    	self.message_queues[sock].put(x[2])
+	    else:
+		self.message_queues[sock].put(self.neighbors.send_front(':'.join(x)))
 
     def _insert(self, data, sock):
         # data = insert:key:value
@@ -167,12 +170,15 @@ class Server(object):
             x.append(self.myhash)
             self.data[key] = (x[1], x[2])
             self.data_lock.release()
-            self.thread_list.append(threading.Thread(target=send_request, args=(self.neighbors.front_port, 'add:' + ':'.join(x[-4:], ))))
-            self.thread_list[-1].start()
+            #self.thread_list.append(threading.Thread(target=send_request, args=(self.neighbors.front_port, 'add:' + ':'.join(x[-4:], ))))
+            #self.thread_list[-1].start()
+	    #self.thread_list[-1].join()
+	    self.message_queues[sock].put(self.neighbors.send_front('add:' + ':'.join(x[-4:])))
         else:
             self.data_lock.release()
-            self.neighbors.send_front(data)
-        self.message_queues[sock].put('Done')
+            #self.thread_list.append(threading.Thread(target=send_request, args=(self.neighbors.front_port, data,)))
+	    #self.thread_list[-1].start()
+            self.message_queues[sock].put(self.neighbors.send_front(data))
 
     def _delete(self, data, sock):
         x = data.split(':')
@@ -210,9 +216,20 @@ class Server(object):
         self.data_lock.acquire()
         value = self.data.get(key, None)
         self.data_lock.release()
+	if x[1] != '-1':
+	    if int(x[1]) > 1:
+	        x[1] = str(int(x[1]) - 1)
+	        self.message_queues[sock].put(self.neighbors.send_front(':'.join(x)))
+	    else:
+            	self.message_queues[sock].put('{}:{}'.format(song, value))
+            return
         if self.belongs_here(key):
             logging.debug('query:{}:{}'.format(song, value))
-            self.message_queues[sock].put('{}:{}'.format(song, value))
+	    if x[1] == '-1' and self.replication > 1:
+		x[1] = str(self.replication - 1)
+		self.message_queues[sock].put(self.neighbors.send_front(':'.join(x)))
+	    else: 
+            	self.message_queues[sock].put('{}:{}'.format(song, value))
         elif value is not None:
             logging.debug('query:{}:{}'.format(song, value))
             self.message_queues[sock].put('{}:{}'.format(song, value))
