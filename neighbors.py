@@ -16,13 +16,15 @@ class Neighbors(object):
         self.front_port = front_port
         
     def create_back(self, new_back_hash, new_back_port, port1, myhash):
-        Client(new_back_port).communication('next:' + str(port1)+ ':' + myhash)
+        with Client(new_back_port) as cli:
+            cli.communication('next:' + str(port1)+ ':' + myhash)
         self.back_hash = new_back_hash
         self.back_port = new_back_port
         logging.debug('Back neighbor created')
         
     def create_front(self, new_front_hash, new_front_port, port1, myhash):
-        Client(new_front_port).communication('prev:' + str(port1)+ ':' + myhash)
+        with Client(new_front_port) as cli:
+            cli.communication('prev:' + str(port1)+ ':' + myhash)
         self.front_hash = new_front_hash
         self.front_port = new_front_port
         logging.debug('Front neighbor created')
@@ -38,10 +40,12 @@ class Neighbors(object):
         logging.debug('Front neighbor updated')
 
     def send_back(self,data):
-        return Client(self.back_port).communication(data)
+        with Client(self.back_port) as cli:
+            return cli.communication(data)
 
     def send_front(self,data):
-        return Client(self.front_port).communication(data)
+        with Client(self.front_port) as cli:
+            return cli.communication(data)
 
     def get_front(self):
         return str(self.front_port) + ':' + self.front_hash
@@ -52,7 +56,8 @@ class Neighbors(object):
 ''' Some usefull functions '''
 
 def find_neighbors(hash_value,PORT):
-    x = Client(PORT).communication('join:' + hash_value).split(':')
+    with Client(PORT) as cli:
+        x = cli.communication('join:' + hash_value).split(':')
     x[0] = int(x[0])
     x[2] = int(x[2])
     x[4] = int(x[4])
@@ -60,4 +65,7 @@ def find_neighbors(hash_value,PORT):
     return x
                                 
 def send_request(PORT,message):
-    return Client(PORT).communication(message)
+    with Client(PORT) as cli:
+        return cli.communication(message)
+
+    

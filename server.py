@@ -14,7 +14,6 @@ from binascii import hexlify
 
 logging.basicConfig(filename='debug.log', level=logging.ERROR)
 
-
 class Server(object):
     def __init__(self, HOST, master):
         # Every new implemented method must be added to the dictionary with 'key' a unique identifier like below 
@@ -43,6 +42,7 @@ class Server(object):
         self.replication = 0
         self.m_PORT = master
         self.data_lock = threading.Lock()
+        self.thread_list = [] 
         # self.thread_queue = {} Not used for now
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
@@ -51,6 +51,7 @@ class Server(object):
             logging.error('Bind failed. Error Code : ' + str(msg[0]) + ' Message ' + msg[1])
             sys.exit()
         self.PORT = self.s.getsockname()[1]
+        self.s.settimeout(1)
         self.s.listen(10)
         self.neighbors = Neighbors(self.myhash, self.PORT, self.myhash, self.PORT)
 
@@ -71,20 +72,26 @@ class Server(object):
         self.replication = x[4]
         self.neighbors.create_back(x[1], x[0], self.PORT, self.myhash)
         self.neighbors.create_front(x[3], x[2], self.PORT, self.myhash)
-        threading.Thread(target = send_request, args = (self.neighbors.front_port, 'retrieve:*')).start()
+        self.thread_list.append(threading.Thread(target = send_request, args = (self.neighbors.front_port, 'retrieve:*')))
+        self.thread_list[-1].start()
+        self.thread_list[-1].join()
+        
         
     def _retrieve(self,data,sock):
         data = data.split(':')
         if data[1] == '*':
             res = []
+            #back_data = []
             self.data_lock.acquire()
             for key, value in self.data.iteritems():
                 if self.belongs_here(key) == False:
                     threading.Thread(target = send_request, args = (self.neighbors.back_port, 'add:{}:{}:1:{}'.format(value[0], value[1], self.myhash) )).start()
+                    #back_data.append('add:{}:{}:1:{}'.format(value[0], value[1], self.myhash))
                     if self.neighbors.send_front('retrieve:' + key) == 'None:None':
                         res.append(key)
             for key in res:
                 del self.data[key]
+            self.message_queues[sock].put('Done')
             self.data_lock.release()
         else:
             key = data[1]
@@ -132,7 +139,8 @@ class Server(object):
         send_request(self.m_PORT, 'depart:{}'.format(self.PORT))
         self.close = True
         self.message_queues[sock].put('Done...Bye Bye')
-
+        logging.debug('DEPART COMPLETED')
+        
     def send_data_forward(self):
         """In case of departing, sends all stored data to the next server"""
         self.data_lock.acquire()
@@ -173,7 +181,8 @@ class Server(object):
             x.append(self.myhash)
             self.data[key] = (x[1], x[2])
             self.data_lock.release()
-            threading.Thread(target=send_request, args=(self.neighbors.front_port, 'add:' + ':'.join(x[-4:], ))).start()
+            self.thread_list.append(threading.Thread(target=send_request, args=(self.neighbors.front_port, 'add:' + ':'.join(x[-4:], ))))
+            self.thread_list[-1].start()
         else:
             self.data_lock.release()
             self.neighbors.send_front(data)
@@ -192,7 +201,8 @@ class Server(object):
             self.message_queues[sock].put('{}:{}'.format(*answer))
         else:
             self.neighbors.send_front(data)
-
+            self.message_queues[sock].put('Done')
+            
     def _remove(self, data, sock):
         x = data.split(':')
         key = sha1(x[1]).hexdigest()
@@ -254,60 +264,66 @@ class Server(object):
             self.message_queues[sock].put(self.HOST + str([value for key, value in self.data.iteritems()]))
 
     def _quit(self, data, sock):
-        self.message_queues[sock].put('bb')
+        self.message_queues[sock].put('CLOSE MAN')
 
     def _reply(self, data, sock):
         self.message_queues[sock].put(self.replies.get(data, 'Server cant support this operation'))
 
     def _connection(self):
         # wait to accept a connection - blocking call
-        conn, addr = self.s.accept()
-        self.connection_list.append(conn)
-        self.message_queues[conn] = Queue.Queue()
+                
+        try:
+            conn, addr = self.s.accept()
+            #self.connection_list.append(conn)
+        except socket.timeout:
+            pass
+        else:
+            self.message_queues[conn] = Queue.Queue()
+            self.thread_list.append(threading.Thread(target = self.clientthread, args = (conn,)))
+            self.thread_list[-1].start()
 
-    def accept_connection(self):
+    def clientthread(self, sock):
         while True:
-            read_sockets, write_sockets, error_sockets = select.select(self.connection_list, [], self.connection_list)
-            for sock in read_sockets:
-                if sock == self.s:
-                    self._connection()
+            try:
+                data = sock.recv(1024)
+                if not data:
+                    break
                 else:
-                    try:
-                        data = sock.recv(1024)
-                        self.operations.get(data.split(':')[0], self._reply)(data, sock)
-                        # self.operations.get( (['None'] + [key for key in self.operations if data.startswith(key)]).pop() )(data,sock)
-                    except socket.error:
-                        logging.error('Data recv failed')
-                        break
-                    else:
-                        try:
-                            new_msg = self.message_queues[sock].get_nowait()
-                        except Queue.Empty:
-                            pass
-                        else:
-                            sock.send(new_msg)
-                    finally:
-                        self.connection_list.remove(sock)
+                    fun = self.operations.get(data.split(':')[0], self._reply)
+                    fun(data, sock)
+            except socket.error:
+                logging.error('Data recv failed')
+                break
+            else:
+
+                try:
+                    new_msg = self.message_queues[sock].get_nowait()
+                    
+                except Queue.Empty:
+                    pass
+                else:
+                    sock.send(new_msg)
+                    if new_msg == 'CLOSE MAN':
+                        #self.connection_list.remove(sock)
                         del self.message_queues[sock]
                         sock.close()
+                        return
+                
 
-            for sock in error_sockets:
-                print >> sys.stderr, 'handling exceptional condition for', sock.getpeername()
-                # Stop listening for input on the connection
-                self._quit('', sock)
-                if sock in self.write_to_client:
-                    self.write_to_client.remove(sock)
-
-                self.connection_list.remove(sock)
-                del self.message_queues[sock]
-                sock.close()
-
+        
+    def accept_connection(self):
+        while True:
+            #read_sockets, write_sockets, error_sockets = select.select(self.connection_list, [], self.connection_list)
+            
+            self._connection()            
+            
             if self.close:
-                # self.thread_queue.join()
-                time.sleep(1)
-                logging.debug('return')
+                logging.debug('CLOSEEEEEEEEEEEEEEE')
+                time.sleep(2)
+                #for t in self.thread_list:
+                 #   t.join()
                 return
-
+                
         self.s.close()
 
     def get_port(self):
