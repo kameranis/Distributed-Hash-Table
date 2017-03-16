@@ -1,21 +1,25 @@
 #!/usr/bin/env python
 
-import socket
-import select
 import Queue
-import sys
 import logging
+import socket
+import sys
 import threading
 import time
+from hashlib import sha1
 
 from neighbors import Neighbors, find_neighbors, send_request
-from hashlib import sha1
 
 logging.basicConfig(filename='debug.log', level=logging.ERROR)
 
+
 class Server(object):
-    def __init__(self, HOST, master):
-        # Every new implemented method must be added to the dictionary with 'key' a unique identifier like below 
+    """Server class
+
+    Implements all the stuff that a DHT server should do"""
+    def __init__(self, host, master):
+        """Every new implemented method must be added to the dictionary
+        with 'key' a unique identifier as below"""
         self.operations = {'quit': self._quit,
                            'join': self._join,
                            'next': self._update_my_front,
@@ -31,144 +35,179 @@ class Server(object):
                            'retrieve': self._retrieve,
                            'bye': self._bye}
         self.close = False
-        self.HOST = HOST
-        self.myhash = sha1(HOST).hexdigest()
+        self.host = host
+        self.hash = sha1(host).hexdigest()
         self.data = {}
         self.replication = 0
-        self.m_PORT = master
+        self.m_port = master
         self.data_lock = threading.Lock()
-        self.thread_list = [] 
-        self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.thread_list = []
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
-            self.s.bind(('', 0))
+            self.sock.bind(('', 0))
         except socket.error as msg:
             logging.error('Bind failed. Error Code : ' + str(msg[0]) + ' Message ' + msg[1])
             sys.exit()
-        self.PORT = self.s.getsockname()[1]
-        self.s.settimeout(1)
-        self.s.listen(10)
-        self.neighbors = Neighbors(self.myhash, self.PORT, self.myhash, self.PORT)
+        self.port = self.sock.getsockname()[1]
+        self.sock.settimeout(1)
+        self.sock.listen(10)
+        self.neighbors = Neighbors(self.hash, self.port, self.hash, self.port)
 
         self.message_queues = {}  # servers' reply messages
 
-
     def __del__(self):
-        self.s.close()
+        """Destructor"""
+        self.sock.close()
 
-    
     def DHT_join(self):
-        Back_Port, Back_Hash, Front_Port, Front_Hash, self.replication = find_neighbors(self.myhash, self.m_PORT)
-        self.neighbors.create_back(Back_Hash, Back_Port, self.PORT, self.myhash)
-        self.neighbors.create_front(Front_Hash, Front_Port, self.PORT, self.myhash)
+        """Servers join the DHT"""
+        back_port, back_hash, front_port, front_hash, self.replication = \
+            find_neighbors(self.hash, self.m_port)
+        self.neighbors.create_back(back_hash, back_port, self.port, self.hash)
+        self.neighbors.create_front(front_hash, front_port, self.port, self.hash)
+        # Get data from the next server
         self.neighbors.send_front('retrieve:*')
-        
-        
-    def _retrieve(self,data,sock):
+
+    def _retrieve(self, data, sock):
+        """Send data requested to previous server
+        If next server doesn't have data, then remove
+        data = retrieve:key"""
         _, find_key = data.split(':')
+        # Wildcard
         if data[1] == '*':
             res = []
             self.data_lock.acquire()
             for key, value in self.data.iteritems():
-                if self.belongs_here(key) == False:
-                    threading.Thread(target = send_request, args = (self.neighbors.back_port, 'add:{}:{}:1:{}'.format(value[0], value[1], self.myhash) )).start()
+                if not self.belongs_here(key):
+                    req = 'add:{}:{}:1:{}'.format(value[0], value[1], self.hash)
+                    threading.Thread(target=send_request, args=(self.neighbors.back_port, req)).start()
                     if self.neighbors.send_front('retrieve:' + key) == 'None:None':
                         res.append(key)
             for key in res:
                 del self.data[key]
             self.message_queues[sock].put('Done')
             self.data_lock.release()
+        # Single retrieval
         else:
             self.data_lock.acquire()
-            x = self.data.get(find_key,(None,None))
-            if x[0] is not None:
+            key, value = self.data.get(find_key, (None, None))
+            if key is not None:
                 if self.neighbors.send_front('retrieve:' + find_key) == 'None:None':
                     del self.data[find_key]
-                
-            self.data_lock.release() 
-            self.message_queues[sock].put('{}:{}'.format(*x))
-            
+
+            self.data_lock.release()
+            self.message_queues[sock].put('{}:{}'.format(key, value))
+
     def _update_my_front(self, data, sock):
-        _, Front_Port, Front_Hash = data.split(':')
-        self.neighbors.update_front(Front_Hash, int(Front_Port))
-        self.message_queues[sock].put(self.HOST + ': Connection granted...')
+        """Updates front neighbor
+        data = next:port:hash"""
+        _, front_port, front_hash = data.split(':')
+        self.neighbors.update_front(front_hash, int(front_port))
+        self.message_queues[sock].put(self.host + ': Connection granted...')
 
     def _update_my_back(self, data, sock):
-        _, Back_Port, Back_Hash = data.split(':')
-        self.neighbors.update_back(Back_Hash, int(Back_Port))
-        self.message_queues[sock].put(self.HOST + ': Connection granted...')
+        """Updates back neighbor
+        data = prev:port:hash"""
+        _, back_port, back_hash = data.split(':')
+        self.neighbors.update_back(back_hash, int(back_port))
+        self.message_queues[sock].put(self.host + ': Connection granted...')
 
     def belongs_here(self, key):
-        return (self.neighbors.back_hash < key < self.myhash) or \
-               (key <= self.myhash <= self.neighbors.back_hash) or \
-               (self.myhash <= self.neighbors.back_hash <= key)
+        """Decides whether a certain hash belongs in this server"""
+        return (self.neighbors.back_hash < key < self.hash) or \
+               (key <= self.hash <= self.neighbors.back_hash) or \
+               (self.hash <= self.neighbors.back_hash <= key)
 
     def _join(self, data, sock):
+        """Command he receives to determine where a new server belongs
+        data = join:hash"""
         _, key_hash = data.split(':')
         if self.belongs_here(key_hash):
-            message = self.neighbors.get_back() + ':' + str(self.PORT) + ':' + self.myhash
+            message = self.neighbors.get_back() + ':' + str(self.port) + ':' + self.hash
             logging.debug('Join complete')
         else:
             message = self.neighbors.send_front(data)
         self.message_queues[sock].put(message)
 
     def _depart(self, data, sock, forward=True):
+        """Function to gracefully depart the DHT
+        If forward=False, then the DHT is shutting down
+        and we don't need to move the data
+        data = depart"""
         if forward:
             self.send_data_forward()
         self.neighbors.send_back('next:{}:{}'.format(self.neighbors.front_port, self.neighbors.front_hash))
         self.neighbors.send_front('prev:{}:{}'.format(self.neighbors.back_port, self.neighbors.back_hash))
-        send_request(self.m_PORT,'depart')
+        send_request(self.m_port, 'depart')
         self.close = True
         self.message_queues[sock].put('Done...Bye Bye')
         logging.debug('DEPART COMPLETED')
-        
+
     def send_data_forward(self):
         """In case of departing, sends all stored data to the next server"""
         self.data_lock.acquire()
         for key, value in self.data.itervalues():
-            self.neighbors.send_front('add:{}:{}:1:{}'.format(key, value, self.myhash))
+            self.neighbors.send_front('add:{}:{}:1:{}'.format(key, value, self.hash))
         self.data_lock.release()
 
     def _bye(self, data, sock):
+        """DHT is shutting down
+        data = bye"""
         self._depart(data, sock, forward=False)
         t = threading.Thread(target=send_request, args=(self.neighbors.front_port, 'bye',))
         t.start()
 
     def _add_data(self, data, sock):
+        """Someone in the back of us wants to add
+        more replicas of what they sent me
+        If I already have it, then push it forward
+        data = add:key:value:copies:host"""
         _, key, value, copies, host = data.split(':')
-        logging.debug('Host: {}, add: {}'.format(self.HOST, value))
-        if (copies == '0') or (host == self.myhash):
+        logging.debug('Host: {}, add: {}'.format(self.host, value))
+        # No more replicas to add or circle
+        if (copies == '0') or (host == self.hash):
             self.message_queues[sock].put(value)
         else:
             key_hash = sha1(key).hexdigest()
             self.data_lock.acquire()
+            # Aleady have it
             if self.data.get(key_hash, None) != (key, value):
                 self.data[key_hash] = (key, value)
                 copies = str(int(copies) - 1)
             self.data_lock.release()
-	    if copies == '0':
-	    	self.message_queues[sock].put(value)
-	    else:
-		self.message_queues[sock].put(self.neighbors.send_front('add:{}:{}:{}:{}'.format(key, value, copies, host)))
+            if copies == '0':
+                self.message_queues[sock].put(value)
+            else:
+                self.message_queues[sock].put(
+                    self.neighbors.send_front('add:{}:{}:{}:{}'.format(key, value, copies, host)))
 
     def _insert(self, data, sock):
+        """A new (key, value) pair is inserted
+        If it doesn't belong to us, send it forward
+        Otherwise add replication-1
+        data = insert:key:value"""
         _, key, value = data.split(':')
         key_hash = sha1(key).hexdigest()
-        logging.debug('Host: {}, insert: {}'.format(self.HOST, key))
+        logging.debug('Host: {}, insert: {}'.format(self.host, key))
         self.data_lock.acquire()
         if self.data.get(key_hash, (None, None))[1] == value:
             self.data_lock.release()
         elif self.belongs_here(key_hash):
             self.data[key_hash] = (key, value)
             self.data_lock.release()
-	    self.message_queues[sock].put(self.neighbors.send_front('add:{}:{}:{}:{}'.format(key, value, self.replication-1, self.myhash)))
+            self.message_queues[sock].put(
+                self.neighbors.send_front('add:{}:{}:{}:{}'.format(key, value, self.replication - 1, self.hash)))
         else:
             self.data_lock.release()
             self.message_queues[sock].put(self.neighbors.send_front(data))
 
     def _delete(self, data, sock):
+        """Deletes key, value
+        Same as insert
+        data = delete:key"""
         _, key = data.split(':')
         key_hash = sha1(key).hexdigest()
-        logging.debug('Host: {}, delete: {}'.format(self.HOST, key))
+        logging.debug('Host: {}, delete: {}'.format(self.host, key))
         if self.belongs_here(key_hash):
             self.data_lock.acquire()
             answer = self.data.pop(key_hash, (None, None))
@@ -179,8 +218,10 @@ class Server(object):
         else:
             self.neighbors.send_front(data)
             self.message_queues[sock].put('Done')
-            
+
     def _remove(self, data, sock):
+        """Removes key, same as add
+        data = remove:key"""
         _, key = data.split(':')
         key_hash = sha1(key).hexdigest()
         self.data_lock.acquire()
@@ -190,76 +231,84 @@ class Server(object):
             self.neighbors.send_front('remove:{}'.format(key))
         self.message_queues[sock].put('{}:{}'.format(*answer))
 
-
     def _query(self, data, sock):
-        """Searches for a key                                                                                                                                             
-        data = 'query:key"""
-        x = data.split(':')
-        song = x[3]
-        logging.debug('Hash: {}, quering {}'.format(self.myhash, song))
+        """Searches for a key
+        data = 'query:copies:hostkey"""
+        _, copies, host, song = data.split(':')
         key = sha1(song).hexdigest()
         self.data_lock.acquire()
         value = self.data.get(key, None)
         self.data_lock.release()
-	if x[1] != '-1':
-	    if int(x[1]) > 1:
-	        x[1] = str(int(x[1]) - 1)
-	        self.message_queues[sock].put(self.neighbors.send_front(':'.join(x)))
-	    else:
-            	self.message_queues[sock].put('{}:{}'.format(song, value))
-            return
-        if self.belongs_here(key):
-            logging.debug('query:{}:{}'.format(song, value))
-	    if x[1] == '-1' and self.replication > 1:
-		x[1] = str(self.replication - 1)
-		self.message_queues[sock].put(self.neighbors.send_front(':'.join(x)))
-	    else: 
-            	self.message_queues[sock].put('{}:{}'.format(song, value))
-        elif value is not None:
-            logging.debug('query:{}:{}'.format(song, value))
-            self.message_queues[sock].put('{}:{}'.format(song, value))
+        # Message has passed through the server it belongs
+        if copies != '-1':
+            # Last replica
+            if int(copies) > 1:
+                logging.debug('Passing forward query:{}:{}'.format(song, value))
+                copies = str(int(copies) - 1)
+                self.message_queues[sock].put(self.neighbors.send_front('query:{}:{}:{}'.format(copies, host, song)))
+            # Not last replica, move forward
+            else:
+                logging.debug('Last copy query:{}:{}'.format(song, value))
+                self.message_queues[sock].put('{}:{}'.format(song, value))
+        elif self.belongs_here(key):
+            logging.debug('Belongs query:{}:{}'.format(song, value))
+            if self.replication > 1:
+                logging.debug('Passing forward query:{}:{}'.format(song, value))
+                copies = str(self.replication - 1)
+                self.message_queues[sock].put(self.neighbors.send_front('query:{}:{}:{}'.format(copies, host, song)))
+            # Only replica
+            else:
+                logging.debug('Only copy query:{}:{}'.format(song, value))
+                self.message_queues[sock].put('{}:{}'.format(song, value))
         else:
             logging.debug('Passing forward query:{}:{}'.format(song, value))
-            answer = self.neighbors.send_front(':'.join(x))
+            answer = self.neighbors.send_front('query:{}:{}:{}'.format(copies, host, song))
             self.message_queues[sock].put(answer)
 
-    def _print_my_data(self,data,sock):
-        x = data.split(':')
-        if x[1] != self.myhash:
+    def _print_my_data(self, data, sock):
+        """Prints my data and forwards the message
+        data = print_my_data:hash"""
+        _, host_hash = data.split(':')
+        if host_hash != self.hash:
             self.data_lock.acquire()
-            print self.HOST, [value for key, value in self.data.iteritems()]
+            print self.host, [value for value in self.data.itervalues()]
             self.data_lock.release()
             self.message_queues[sock].put(self.neighbors.send_front(data))
         else:
             self.message_queues[sock].put('Done')
 
-    def _print_all_data(self,data,sock):
+    def _print_all_data(self, data, sock):
+        """Starts data printing of all servers
+        data = print_all_data"""
         self.data_lock.acquire()
-        print self.HOST, [value for key, value in self.data.iteritems()]
+        print self.host, [value for value in self.data.itervalues()]
         self.data_lock.release()
-        if self.neighbors.front_hash != self.myhash:
-            self.message_queues[sock].put(self.neighbors.send_front('print_my_data:'+self.myhash))
+        if self.neighbors.front_hash != self.hash:
+            self.message_queues[sock].put(self.neighbors.send_front('print_my_data:' + self.hash))
         else:
             self.message_queues[sock].put('Done')
-        
+
     def _quit(self, data, sock):
+        """Quits"""
         self.message_queues[sock].put('CLOSE MAN')
 
     def _reply(self, data, sock):
+        """Bad Request"""
         self.message_queues[sock].put('Server cant support this operation')
 
     def _connection(self):
-        #wait to accept a connection - blocking call
+        """Main function to serve a connection"""
         try:
-            conn, addr = self.s.accept()
+            conn, _ = self.sock.accept()
         except socket.timeout:
             pass
         else:
             self.message_queues[conn] = Queue.Queue()
-            self.thread_list.append(threading.Thread(target = self.clientthread, args = (conn,)))
+            self.thread_list.append(threading.Thread(target=self.clientthread, args=(conn,)))
             self.thread_list[-1].start()
 
     def clientthread(self, sock):
+        """A thread executes the command"""
         while True:
             try:
                 data = sock.recv(1024)
@@ -282,24 +331,50 @@ class Server(object):
                         del self.message_queues[sock]
                         sock.close()
                         return
-                
 
-        
     def accept_connection(self):
+        """Main loop"""
         while True:
-            self._connection()            
+            self._connection()
             if self.close:
                 logging.debug('CLOSEEEEEEEEEEEEEEE')
                 time.sleep(2)
                 return
-                
-        self.s.close()
 
     def get_port(self):
-        return self.PORT
+        """Returns port"""
+        return self.port
 
     def get_host(self):
-        return self.HOST
+        """Returns host"""
+        return self.host
 
     def get_sock(self):
-        return self.s
+        """Returns socket"""
+        return self.sock
+
+
+class Server_master(Server):
+    """First server of the DHT"""
+    def __init__(self, host, repl):
+        self._network_size = 1
+        self.close = False
+        super(Server_master, self).__init__(host, -1)
+        self.replication = int(repl)
+
+    def _join(self, data, sock):
+        self._network_size += 1
+        super(Server_master, self)._join(data, sock)
+        self.message_queues[sock].put(self.message_queues[sock].get() + ':' + str(self.replication))
+
+    def _depart(self, data, sock, forward=True):
+        self._network_size -= 1
+        self.message_queues[sock].put('Done')
+
+    def _bye(self, data, sock):
+        if self._network_size > 1:
+            thr = threading.Thread(target=send_request, args=(self.neighbors.front_port, 'bye',))
+            thr.start()
+        else:
+            self.close = True
+        self.message_queues[sock].put('Done')

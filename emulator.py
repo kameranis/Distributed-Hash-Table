@@ -9,8 +9,7 @@ import time
 
 from multiprocessing import Process, Queue
 from client import Client
-from server import Server
-from server_master import Server_master
+from server import Server, Server_master
 
 
 class Emulator(object):
@@ -98,10 +97,10 @@ class Emulator(object):
         port = self.ports[host]
         if command[1] == '*':
             with Client(port) as cli:
-                cli.communication('print_all_data')
+                print cli.communication('print_all_data')
         else:
             with Client(port) as cli:
-                print cli.communication('{}:-1:-1:{}'.format(*command))
+                cli.communication('{}:-1:-1:{}'.format(*command))
 
     def print_help(self, command):
         """Prints a helping message to the user"""

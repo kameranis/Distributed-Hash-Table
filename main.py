@@ -23,7 +23,6 @@ def main():
     Closes the DHT"""
     # Create the DHT
     emu = Emulator(int(sys.argv[1]))
-    emu.print_help('')
     for i in range(2, 10):
         emu.execute(['join', str(i)])
 
@@ -36,6 +35,7 @@ def main():
     print 'Request throughput:', request_throughput
     emu.execute(['exit'])
 
+
 def measure_throughput(emu, filename):
     """Reads requests from filename and forwards
     each of them to a random server"""
@@ -47,13 +47,13 @@ def measure_throughput(emu, filename):
             if line.startswith('query'):
                 emu.execute(line.split(', '))
             elif len(line.split(', ')) == 1:
-                emu(['query', line])
+                emu.execute(['query', line])
             elif line.startswith('insert'):
                 emu.execute(line.split(', '))
             elif len(line.split(', ')) == 2:
                 emu.execute(['insert'] + line.split(', '))
             else:
-                raise ValueError('Bad Request')
+                raise ValueError('Bad Request %s' % line)
             request_count += 1
     return (time.time() - start) / request_count
 
