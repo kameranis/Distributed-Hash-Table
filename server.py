@@ -196,7 +196,7 @@ class Server(object):
             self.data[key_hash] = (key, value)
             self.data_lock.release()
             self.message_queues[sock].put(value)
-            self.neighbors.send_front('add:{}:{}:{}:{}'.format(key, value, self.replication - 1, self.hash))
+            threading.Thread(target=self.neighbors.send_front, args=('add:{}:{}:{}:{}'.format(key, value, self.replication - 1, self.hash), )).start()
         else:
             self.data_lock.release()
             self.message_queues[sock].put(self.neighbors.send_front(data))
