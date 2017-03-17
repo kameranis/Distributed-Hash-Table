@@ -74,7 +74,7 @@ class Server(object):
         data = retrieve:key"""
         _, find_key = data.split(':')
         # Wildcard
-        if data[1] == '*':
+        if find_key == '*':
             res = []
             self.data_lock.acquire()
             for key, value in self.data.iteritems():
@@ -114,7 +114,7 @@ class Server(object):
 
     def belongs_here(self, key):
         """Decides whether a certain hash belongs in this server"""
-        return (self.neighbors.back_hash < key < self.hash) or \
+        return (self.neighbors.back_hash < key <= self.hash) or \
                (key <= self.hash <= self.neighbors.back_hash) or \
                (self.hash <= self.neighbors.back_hash <= key)
 
@@ -240,13 +240,13 @@ class Server(object):
         value = self.data.get(key, None)
         self.data_lock.release()
         if self.belongs_here(key):
-            logging.debug('Belongs query:{}:{}'.format(song, value))
+            logging.debug('{}: Belongs query:{}:{}'.format(self.host, song, value))
             self.message_queues[sock].put('{}:{}'.format(song, value))
         elif value is not None:
-            logging.debug('Found query:{}:{}'.format(song, value))
+            logging.debug('{}: Found query:{}:{}'.format(self.host, song, value))
             self.message_queues[sock].put('{}:{}'.format(song, value))
         else:
-            logging.debug('Passing forward query:{}:{}'.format(song, value))
+            logging.debug('{} Passing forward query:{}:{}'.format(self.host, song, value))
             self.message_queues[sock].put(self.neighbors.send_front('query:{}:{}:{}'.format(copies, host, song)))
 
     def _print_my_data(self, data, sock):
