@@ -74,7 +74,7 @@ class Server(object):
         data = retrieve:key"""
         _, find_key = data.split(':')
         # Wildcard
-        if data[1] == '*':
+        if find_key == '*':
             res = []
             self.data_lock.acquire()
             for key, value in self.data.iteritems():
@@ -114,7 +114,7 @@ class Server(object):
 
     def belongs_here(self, key):
         """Decides whether a certain hash belongs in this server"""
-        return (self.neighbors.back_hash < key < self.hash) or \
+        return (self.neighbors.back_hash < key <= self.hash) or \
                (key <= self.hash <= self.neighbors.back_hash) or \
                (self.hash <= self.neighbors.back_hash <= key)
 
@@ -243,17 +243,17 @@ class Server(object):
         if copies != '-1':
             # Last replica
             if int(copies) > 1:
-                logging.debug('Passing forward query:{}:{}'.format(song, value))
+                logging.debug('{} Passing forward query:{}:{}'.format(self.host, song, value))
                 copies = str(int(copies) - 1)
                 self.message_queues[sock].put(self.neighbors.send_front('query:{}:{}:{}'.format(copies, host, song)))
             # Not last replica, move forward
             else:
-                logging.debug('Last copy query:{}:{}'.format(song, value))
+                logging.debug('{} Last copy query:{}:{}'.format(self.host, song, value))
                 self.message_queues[sock].put('{}:{}'.format(song, value))
         elif self.belongs_here(key):
-            logging.debug('Belongs query:{}:{}'.format(song, value))
+            logging.debug('{} Belongs query:{}:{}'.format(self.host, song, value))
             if self.replication > 1:
-                logging.debug('Passing forward query:{}:{}'.format(song, value))
+                logging.debug('{} Passing forward query:{}:{}'.format(self.host, song, value))
                 copies = str(self.replication - 1)
                 self.message_queues[sock].put(self.neighbors.send_front('query:{}:{}:{}'.format(copies, host, song)))
             # Only replica
@@ -261,7 +261,7 @@ class Server(object):
                 logging.debug('Only copy query:{}:{}'.format(song, value))
                 self.message_queues[sock].put('{}:{}'.format(song, value))
         else:
-            logging.debug('Passing forward query:{}:{}'.format(song, value))
+            logging.debug('{} Passing forward query:{}:{}'.format(self.host, song, value))
             answer = self.neighbors.send_front('query:{}:{}:{}'.format(copies, host, song))
             self.message_queues[sock].put(answer)
 

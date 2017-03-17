@@ -100,7 +100,7 @@ class Emulator(object):
                 print cli.communication('print_all_data')
         else:
             with Client(port) as cli:
-                cli.communication('{}:-1:-1:{}'.format(*command))
+                print cli.communication('{}:-1:-1:{}'.format(*command))
 
     def print_help(self, command):
         """Prints a helping message to the user"""
